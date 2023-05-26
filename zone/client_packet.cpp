@@ -4280,7 +4280,7 @@ void Client::Handle_OP_CastSpell(const EQApplicationPacket *app)
 	LogSpells("OP CastSpell: slot [{}] spell [{}] target [{}] inv [{}]", castspell->slot, castspell->spell_id, castspell->target_id, (unsigned long)castspell->inventoryslot);
 	CastingSlot slot = static_cast<CastingSlot>(castspell->slot);
 
-	/* Any spell is valid and doesn't need to be memorized */
+	// BRYANT052223-START-: allow any class to use any spell
 	if(slot < CastingSlot::Item) {
 		uint16 spell_to_cast = castspell->spell_id;
 		if (IsValidSpell(spell_to_cast)) {
@@ -4303,6 +4303,8 @@ void Client::Handle_OP_CastSpell(const EQApplicationPacket *app)
 			InterruptSpell();
 		}
 	}
+	// BRYANT052223-END-: allow any class to use any spell
+
 	/* Spell Slot or Potion Belt Slot */
 	else if (slot == CastingSlot::Item || slot == CastingSlot::PotionBelt)	// ITEM or POTION cast
 	{
