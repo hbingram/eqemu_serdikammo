@@ -849,6 +849,9 @@ bool Client::UseDiscipline(uint32 spell_id, uint32 target) {
 	const SPDat_Spell_Struct &spell = spells[spell_id];
 	
 	// BRYANT052223-START-: allow any class to use any discipline
+	if (!spell.is_discipline) {
+		return false;
+	}
 	uint8 level_to_use = 255;
 	for (int i = 0; i < sizeof(spell.classes); i++)
 	{
