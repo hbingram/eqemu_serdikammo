@@ -1793,6 +1793,17 @@ struct GMSummon_Struct {
 /*104*/	uint32	unknown2; // E0 E0 56 00
 };
 
+struct GMFind_Struct {
+	char	charname[64];
+	char	gmname[64];
+	uint32	success;
+	uint32	zoneID;
+	float	x;
+	float	y;
+	float	z;
+	uint32	unknown2;
+};
+
 struct GMGoto_Struct { // x,y is swapped as compared to summon and makes sense as own packet
 /*  0*/ char	charname[64];
 
@@ -4094,7 +4105,9 @@ struct UpdateLeadershipAA_Struct {
 
 enum
 {
-	GroupLeadershipAbility_MarkNPC = 0
+	GroupLeadershipAbility_MarkNPC = 0,
+	RaidLeadershipAbility_MarkNPC = 16,
+	RaidLeadershipAbility_MainAssist = 19
 };
 
 struct DoGroupLeadershipAbility_Struct
@@ -4138,8 +4151,10 @@ struct InspectBuffs_Struct {
 struct RaidGeneral_Struct {
 /*00*/	uint32		action;	//=10
 /*04*/	char		player_name[64];	//should both be the player's name
-/*64*/	char		leader_name[64];
-/*132*/	uint32		parameter;
+/*68*/	uint32		unknown1;
+/*72*/	char		leader_name[64];
+/*136*/	uint32		parameter;
+/*200*/	char		note[64];
 };
 
 struct RaidAddMember_Struct {

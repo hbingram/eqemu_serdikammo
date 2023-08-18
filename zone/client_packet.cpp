@@ -62,6 +62,7 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "../common/repositories/account_repository.h"
 
 #include "../common/events/player_event_logs.h"
+#include "../common/repositories/character_stats_record_repository.h"
 
 extern QueryServ* QServ;
 extern Zone* zone;
@@ -328,6 +329,8 @@ void MapOpcodes()
 	ConnectedOpcodes[OP_PVPLeaderBoardRequest] = &Client::Handle_OP_PVPLeaderBoardRequest;
 	ConnectedOpcodes[OP_QueryUCSServerStatus] = &Client::Handle_OP_QueryUCSServerStatus;
 	ConnectedOpcodes[OP_RaidInvite] = &Client::Handle_OP_RaidCommand;
+	ConnectedOpcodes[OP_RaidDelegateAbility] = &Client::Handle_OP_RaidDelegateAbility;
+	ConnectedOpcodes[OP_RaidClearNPCMarks] = &Client::Handle_OP_RaidClearNPCMarks;
 	ConnectedOpcodes[OP_RandomReq] = &Client::Handle_OP_RandomReq;
 	ConnectedOpcodes[OP_ReadBook] = &Client::Handle_OP_ReadBook;
 	ConnectedOpcodes[OP_RecipeAutoCombine] = &Client::Handle_OP_RecipeAutoCombine;
@@ -607,7 +610,6 @@ void Client::CompleteConnect()
 			but not important for now.
 			*/
 			raid->SendRaidCreate(this);
-			raid->SendMakeLeaderPacketTo(raid->leadername, this);
 			raid->SendRaidAdd(GetName(), this);
 			raid->SendBulkRaid(this);
 			raid->SendGroupUpdate(this);
@@ -616,6 +618,7 @@ void Client::CompleteConnect()
 				raid->UpdateRaidAAs();
 				raid->SendAllRaidLeadershipAA();
 			}
+			raid->SendMakeLeaderPacketTo(raid->leadername, this);
 			uint32 grpID = raid->GetGroup(GetName());
 			if (grpID < 12) {
 				raid->SendRaidGroupRemove(GetName(), grpID);
@@ -636,6 +639,8 @@ void Client::CompleteConnect()
 				raid->SendRaidLockTo(this);
 
 			raid->SendHPManaEndPacketsTo(this);
+			raid->SendAssistTarget(this);
+			raid->SendMarkTargets(this);
 		}
 	}
 	else {
@@ -656,7 +661,7 @@ void Client::CompleteConnect()
 
 		const SPDat_Spell_Struct &spell = spells[buffs[j1].spellid];
 
-		int NimbusEffect = GetNimbusEffect(buffs[j1].spellid);
+		int NimbusEffect = GetSpellNimbusEffect(buffs[j1].spellid);
 		if (NimbusEffect) {
 			if (!IsNimbusEffectActive(NimbusEffect))
 				SendSpellEffect(NimbusEffect, 500, 0, 1, 3000, true);
@@ -721,17 +726,17 @@ void Client::CompleteConnect()
 			case SE_AddMeleeProc:
 			case SE_WeaponProc:
 			{
-				AddProcToWeapon(GetProcID(buffs[j1].spellid, x1), false, 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid, buffs[j1].casterlevel, GetProcLimitTimer(buffs[j1].spellid, ProcType::MELEE_PROC));
+				AddProcToWeapon(GetProcID(buffs[j1].spellid, x1), false, 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid, buffs[j1].casterlevel, GetSpellProcLimitTimer(buffs[j1].spellid, ProcType::MELEE_PROC));
 				break;
 			}
 			case SE_DefensiveProc:
 			{
-				AddDefensiveProc(GetProcID(buffs[j1].spellid, x1), 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid, GetProcLimitTimer(buffs[j1].spellid, ProcType::DEFENSIVE_PROC));
+				AddDefensiveProc(GetProcID(buffs[j1].spellid, x1), 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid, GetSpellProcLimitTimer(buffs[j1].spellid, ProcType::DEFENSIVE_PROC));
 				break;
 			}
 			case SE_RangedProc:
 			{
-				AddRangedProc(GetProcID(buffs[j1].spellid, x1), 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid, GetProcLimitTimer(buffs[j1].spellid, ProcType::RANGED_PROC));
+				AddRangedProc(GetProcID(buffs[j1].spellid, x1), 100 + spells[buffs[j1].spellid].limit_value[x1], buffs[j1].spellid, GetSpellProcLimitTimer(buffs[j1].spellid, ProcType::RANGED_PROC));
 				break;
 			}
 			}
@@ -910,6 +915,8 @@ void Client::CompleteConnect()
 	}
 
 	heroforge_wearchange_timer.Start(250);
+
+	RecordStats();
 
 	// enforce some rules..
 	if (!CanEnterZone()) {
@@ -2120,6 +2127,11 @@ void Client::Handle_OP_AdventureMerchantRequest(const EQApplicationPacket *app)
 		(tmp->GetClass() != DISCORD_MERCHANT) && (tmp->GetClass() != NORRATHS_KEEPERS_MERCHANT) && (tmp->GetClass() != DARK_REIGN_MERCHANT)))
 		return;
 
+	if (!tmp->CastToNPC()->IsMerchantOpen()) {
+		tmp->SayString(zone->random.Int(MERCHANT_CLOSED_ONE, MERCHANT_CLOSED_THREE));
+		return;
+	}
+
 	//you have to be somewhat close to them to be properly using them
 	if (DistanceSquared(m_Position, tmp->GetPosition()) > USE_NPC_RANGE2)
 		return;
@@ -3038,8 +3050,22 @@ void Client::Handle_OP_AssistGroup(const EQApplicationPacket *app)
 		LogDebug("Size mismatch in OP_AssistGroup expected [{}] got [{}]", sizeof(EntityId_Struct), app->size);
 		return;
 	}
-	QueuePacket(app);
-	return;
+
+	EntityId_Struct* eid = (EntityId_Struct*)app->pBuffer;
+	Entity* entity = entity_list.GetID(eid->entity_id);
+
+	if (entity && entity->IsMob()) {
+		Mob* new_target = entity->CastToMob();
+		if (new_target && (GetGM() ||
+			Distance(m_Position, new_target->GetPosition()) <= TARGETING_RANGE)) {
+			cheat_manager.SetExemptStatus(Assist, true);
+			EQApplicationPacket* outapp = new EQApplicationPacket(OP_Assist, sizeof(EntityId_Struct));
+			eid = (EntityId_Struct*)outapp->pBuffer;
+			eid->entity_id = new_target->GetID();
+			FastQueuePacket(&outapp);
+			safe_delete(outapp);
+		}
+	}
 }
 
 void Client::Handle_OP_AugmentInfo(const EQApplicationPacket *app)
@@ -5212,12 +5238,12 @@ void Client::Handle_OP_ConsiderCorpse(const EQApplicationPacket *app)
 
 	uint32 decay_time = t->GetDecayTime();
 	if (decay_time) {
-		auto time_string = Strings::SecondsToTime(decay_time, true);
+		const std::string& time_string = Strings::SecondsToTime(decay_time, true);
 		Message(
 			Chat::NPCQuestSay,
 			fmt::format(
 				"This corpse will decay in {}.",
-				time_string
+				Strings::ToLower(time_string)
 			).c_str()
 		);
 
@@ -5856,6 +5882,31 @@ void Client::Handle_OP_DoGroupLeadershipAbility(const EQApplicationPacket *app)
 		break;
 	}
 
+	case RaidLeadershipAbility_MainAssist:
+	{
+		//This is not needed as it executes from opcode 0x2b33 which is sent
+		//with this opcode.
+		//if (GetTarget())
+		//{
+		//	Raid* r = GetRaid();
+		//	if (r)
+		//	{
+		//		r->DelegateAbility(GetTarget()->CastToClient()->GetName());
+		//	}
+		//}
+		break;
+	}
+	case RaidLeadershipAbility_MarkNPC:
+	{
+		if (GetTarget() && GetTarget()->IsMob()) {
+			Raid* r = GetRaid();
+			if (r) {
+				r->RaidMarkNPC(this, dglas->Parameter);
+			}
+		}
+		break;
+
+	}
 	default:
 		LogDebug("Got unhandled OP_DoGroupLeadershipAbility Ability: [{}] Parameter: [{}]", dglas->Ability, dglas->Parameter);
 		break;
@@ -6482,27 +6533,28 @@ void Client::Handle_OP_GMFind(const EQApplicationPacket *app)
 		RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = "Used /find"});
 		return;
 	}
-	if (app->size != sizeof(GMSummon_Struct)) {
-		LogError("Wrong size: OP_GMFind, size=[{}], expected [{}]", app->size, sizeof(GMSummon_Struct));
+
+	if (app->size != sizeof(GMFind_Struct)) {
+		LogError("Wrong size: OP_GMFind, size=[{}], expected [{}]", app->size, sizeof(GMFind_Struct));
 		return;
 	}
+
 	//Break down incoming
-	GMSummon_Struct* request = (GMSummon_Struct*)app->pBuffer;
+	auto* request = (GMFind_Struct*) app->pBuffer;
 	//Create a new outgoing
-	auto outapp = new EQApplicationPacket(OP_GMFind, sizeof(GMSummon_Struct));
-	GMSummon_Struct* foundplayer = (GMSummon_Struct*)outapp->pBuffer;
+	auto outapp = new EQApplicationPacket(OP_GMFind, sizeof(GMFind_Struct));
+	auto* foundplayer = (GMFind_Struct*) outapp->pBuffer;
 	//Copy the constants
 	strcpy(foundplayer->charname, request->charname);
 	strcpy(foundplayer->gmname, request->gmname);
 	//Check if the NPC exits intrazone...
-	Mob* gt = entity_list.GetMob(request->charname);
-	if (gt != 0) {
+	auto* gt = entity_list.GetMob(request->charname);
+	if (gt) {
 		foundplayer->success = 1;
-		foundplayer->x = (int32)gt->GetX();
-		foundplayer->y = (int32)gt->GetY();
-
-		foundplayer->z = (int32)gt->GetZ();
-		foundplayer->zoneID = zone->GetZoneID();
+		foundplayer->x       = gt->GetX();
+		foundplayer->y       = gt->GetY();
+		foundplayer->z       = gt->GetZ();
+		foundplayer->zoneID  = zone->GetZoneID();
 	}
 	//Send the packet...
 	FastQueuePacket(&outapp);
@@ -6784,16 +6836,14 @@ void Client::Handle_OP_GMSearchCorpse(const EQApplicationPacket *app)
 
 void Client::Handle_OP_GMServers(const EQApplicationPacket *app)
 {
-	if (!worldserver.Connected())
-		Message(Chat::Red, "Error: World server disconnected");
-	else {
-		auto pack = new ServerPacket(ServerOP_ZoneStatus, strlen(GetName()) + 2);
-		memset(pack->pBuffer, (uint8)admin, 1);
-		strcpy((char *)&pack->pBuffer[1], GetName());
-		worldserver.SendPacket(pack);
-		safe_delete(pack);
-	}
-	return;
+	auto pack = new ServerPacket(ServerOP_ZoneStatus, sizeof(ServerZoneStatus_Struct));
+
+	auto z = (ServerZoneStatus_Struct *) pack->pBuffer;
+	z->admin = Admin();
+	strn0cpy(z->name, GetName(), sizeof(z->name));
+
+	worldserver.SendPacket(pack);
+	delete pack;
 }
 
 void Client::Handle_OP_GMSummon(const EQApplicationPacket *app)
@@ -9152,8 +9202,14 @@ void Client::Handle_OP_ItemVerifyRequest(const EQApplicationPacket *app)
 		}
 		else if (inst->IsClassCommon())
 		{
-			if (!RuleB(Skills, RequireTomeHandin) && item->ItemType == EQ::item::ItemTypeSpell && (strstr((const char*)item->Name, "Tome of ") || strstr((const char*)item->Name, "Skill: ")))
-			{
+			if (
+				!RuleB(Skills, RequireTomeHandin) &&
+				item->ItemType == EQ::item::ItemTypeSpell &&
+				(
+					Strings::BeginsWith(item->Name, "Tome of ") ||
+					Strings::BeginsWith(item->Name, "Skill: ")
+				)
+			) {
 				DeleteItemInInventory(slot_id, 1, true);
 				TrainDiscipline(item->ID);
 			}
@@ -9243,7 +9299,7 @@ void Client::Handle_OP_ItemVerifyRequest(const EQApplicationPacket *app)
 						return;
 					}
 					if (i == 0) {
-						if (!IsCastWhileInvis(item->Click.Effect)) {
+						if (!IsCastWhileInvisibleSpell(item->Click.Effect)) {
 							CommonBreakInvisible(); // client can't do this for us :(
 						}
 						if (GetClass() == BARD){
@@ -9315,7 +9371,7 @@ void Client::Handle_OP_ItemVerifyRequest(const EQApplicationPacket *app)
 					}
 
 					if (i == 0) {
-						if (!IsCastWhileInvis(augitem->Click.Effect)) {
+						if (!IsCastWhileInvisibleSpell(augitem->Click.Effect)) {
 							CommonBreakInvisible(); // client can't do this for us :(
 						}
 						if (GetClass() == BARD) {
@@ -10717,7 +10773,7 @@ void Client::Handle_OP_PetCommands(const EQApplicationPacket *app)
 	case PET_HEALTHREPORT: {
 		if ((mypet->GetPetType() == petAnimation && aabonuses.PetCommands[PetCommand]) || mypet->GetPetType() != petAnimation) {
 			MessageString(Chat::PetResponse, PET_REPORT_HP, ConvertArrayF(mypet->GetHPRatio(), val1));
-			mypet->ShowBuffList(this);
+			mypet->ShowBuffs(this);
 		}
 		break;
 	}
@@ -11467,10 +11523,9 @@ void Client::Handle_OP_PopupResponse(const EQApplicationPacket *app)
 			break;
 
 		case POPUPID_UPDATE_SHOWSTATSWINDOW:
-			if (GetTarget() && GetTarget()->IsClient()) {
-				GetTarget()->CastToClient()->SendStatsWindow(this, true);
-			}
-			else {
+			if (GetTarget() && GetTarget()->IsOfClientBot()) {
+				GetTarget()->SendStatsWindow(this, true);
+			} else {
 				SendStatsWindow(this, true);
 			}
 			return;
@@ -11936,6 +11991,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 							if (raid->IsLocked()) {
 								raid->SendRaidLockTo(c);
 							}
+							raid->SendAssistTarget(c);
+							raid->SendMarkTargets(c);
 						}
 					}
 					group->JoinRaidXTarget(raid);
@@ -11950,6 +12007,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 					if (raid->IsLocked()) {
 						raid->SendRaidLockTo(this);
 					}
+					raid->SendAssistTarget(this);
+					raid->SendMarkTargets(this);
 				}
 			}
 			else
@@ -11990,6 +12049,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 									if (raid->IsLocked()) {
 										raid->SendRaidLockTo(c);
 									}
+									raid->SendAssistTarget(c);
+									raid->SendMarkTargets(c);
 								}
 								else {
 									Client* c = nullptr;
@@ -12006,6 +12067,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 									if (raid->IsLocked()) {
 										raid->SendRaidLockTo(c);
 									}
+									raid->SendAssistTarget(c);
+									raid->SendMarkTargets(c);
 								}
 							}
 						}
@@ -12045,6 +12108,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 								if (raid->IsLocked()) {
 									raid->SendRaidLockTo(c);
 								}
+								raid->SendAssistTarget(c);
+								raid->SendMarkTargets(c);
 							}
 							else
 							{
@@ -12062,6 +12127,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 								if (raid->IsLocked()) {
 									raid->SendRaidLockTo(c);
 								}
+								raid->SendAssistTarget(c);
+								raid->SendMarkTargets(c);
 							}
 						}
 					}
@@ -12102,6 +12169,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 									if (raid->IsLocked()) {
 										raid->SendRaidLockTo(c);
 									}
+									raid->SendAssistTarget(c);
+									raid->SendMarkTargets(c);
 								}
 								else
 								{
@@ -12118,6 +12187,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 									if (raid->IsLocked()) {
 										raid->SendRaidLockTo(c);
 									}
+									raid->SendAssistTarget(c);
+									raid->SendMarkTargets(c);
 								}
 							}
 						}
@@ -12131,6 +12202,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 						if (raid->IsLocked()) {
 							raid->SendRaidLockTo(this);
 						}
+						raid->SendAssistTarget(this);
+						raid->SendMarkTargets(this);
 					}
 					else { // neither has a group
 						raid = new Raid(player_sending_invite);
@@ -12145,6 +12218,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 						if (raid->IsLocked()) {
 							raid->SendRaidLockTo(this);
 						}
+						raid->SendAssistTarget(this);
+						raid->SendMarkTargets(this);
 					}
 				}
 			}
@@ -12167,6 +12242,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 				//Does not camp the Bots, just removes from the raid
 				if (c_to_disband) {
 					uint32 i = raid->GetPlayerIndex(raid_command_packet->leader_name);
+					raid->RemoveRaidDelegates(raid_command_packet->leader_name);
+					raid->SendRemoveAllRaidXTargets(raid_command_packet->leader_name);
 					raid->SetNewRaidLeader(i);
 					raid->HandleBotGroupDisband(c_to_disband->CharacterID());
 					raid->HandleOfflineBots(c_to_disband->CharacterID());
@@ -12182,11 +12259,13 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 
 					if (gid < 12 && (raid->IsGroupLeader(b_to_disband->GetName()) || raid->GroupCount(gid) < 2)) {
 						uint32 owner_id = b_to_disband->CastToBot()->GetOwner()->CastToClient()->CharacterID();
+						raid->RemoveRaidDelegates(raid_command_packet->leader_name);
+						raid->UpdateRaidXTargets();
 						raid->HandleBotGroupDisband(owner_id, gid);
-
 					} else if (b_to_disband && raid->IsRaidMember(b_to_disband->GetName())) {
+						raid->RemoveRaidDelegates(raid_command_packet->leader_name);
+						raid->UpdateRaidXTargets();
 						Bot::RemoveBotFromRaid(b_to_disband);
-
 					} else if (gid < 12 && raid->GetGroupLeader(gid) && raid->GetGroupLeader(gid)->IsBot()) {
 						c_doing_disband->Message(
 							Chat::Yellow,
@@ -12217,6 +12296,8 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 				}
 			}
 			raid->SetNewRaidLeader(i);
+			raid->RemoveRaidDelegates(raid_command_packet->leader_name);
+			raid->UpdateRaidXTargets();
 			raid->RemoveMember(raid_command_packet->leader_name);
 			Client* c = entity_list.GetClientByName(raid_command_packet->leader_name);
 			if (c) {
@@ -12270,9 +12351,9 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 										if (client_to_update) {
 											raid->SendRaidRemove(raid->members[x].member_name, client_to_update);
 											raid->SendRaidCreate(client_to_update);
-											raid->SendMakeLeaderPacketTo(raid->leadername, client_to_update);
 											raid->SendRaidAdd(raid->members[x].member_name, client_to_update);
 											raid->SendBulkRaid(client_to_update);
+											raid->SendMakeLeaderPacketTo(raid->leadername, client_to_update);
 											if (raid->IsLocked()) {
 												raid->SendRaidLockTo(client_to_update);
 											}
@@ -12320,9 +12401,9 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 					raid->GroupUpdate(raid_command_packet->parameter);
 
 					/* If our old was a group send update there too */
-					if (old_group < 12)
+					if (old_group < 12) {
 						raid->GroupUpdate(old_group);
-
+					}
 				}
 			}
 			/* Move player to ungrouped bank */
@@ -12383,7 +12464,7 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 				}
 
 				raid->GroupUpdate(oldgrp);
-			}
+}
 		}
 
 		Client* client_moved = entity_list.GetClientByName(raid_command_packet->leader_name);
@@ -12481,7 +12562,18 @@ void Client::Handle_OP_RaidCommand(const EQApplicationPacket* app)
 		raid->SendRaidMOTDToWorld();
 		break;
 	}
+	case RaidCommandSetNote:
+	{
 
+		Raid* raid = entity_list.GetRaidByClient(this);
+		if (!raid) {
+			break;
+		}
+
+		raid->SaveRaidNote(raid_command_packet->leader_name, raid_command_packet->note);
+		raid->SendRaidNotesToWorld();
+		break;
+	}
 	default: {
 		Message(Chat::Red, "Raid command (%d) NYI", raid_command_packet->action);
 		break;
@@ -14031,9 +14123,8 @@ void Client::Handle_OP_ShopRequest(const EQApplicationPacket *app)
 	if (tmp->Charmed())
 		action = 0;
 
-	// 1199 I don't have time for that now. etc
 	if (!tmp->CastToNPC()->IsMerchantOpen()) {
-		tmp->SayString(zone->random.Int(1199, 1202));
+		tmp->SayString(zone->random.Int(MERCHANT_CLOSED_ONE, MERCHANT_CLOSED_THREE));
 		action = 0;
 	}
 
@@ -14426,6 +14517,46 @@ void Client::Handle_OP_SwapSpell(const EQApplicationPacket *app)
 void Client::Handle_OP_TargetCommand(const EQApplicationPacket *app)
 {
 	if (app->size != sizeof(ClientTarget_Struct)) {
+		LogError("OP size error: OP_TargetCommand expected:[{}] got:[{}]", sizeof(ClientTarget_Struct), app->size);
+		return;
+	}
+
+	// Locate and cache new target
+	ClientTarget_Struct* ct = (ClientTarget_Struct*)app->pBuffer;
+
+	bool can_target=false;
+	Mob *nt = entity_list.GetMob(ct->new_target);
+
+	if (nt) {
+		if (GetGM() || (!nt->IsInvisible(this) && (DistanceSquared(m_Position, nt->GetPosition()) <= TARGETING_RANGE*TARGETING_RANGE))) {
+			if (nt->GetBodyType() == BT_NoTarget2 ||
+				nt->GetBodyType() == BT_Special ||
+				nt->GetBodyType() == BT_NoTarget) {
+				can_target = false;
+			}
+			else {
+				can_target = true;
+			}
+		}
+	}
+
+	if (can_target) {
+		QueuePacket(app);
+	}
+	else {
+		MessageString(Chat::Red, DONT_SEE_TARGET);
+		auto outapp = new EQApplicationPacket(OP_TargetReject, sizeof(TargetReject_Struct));
+		outapp->pBuffer[0] = 0x2f;
+		outapp->pBuffer[1] = 0x01;
+		outapp->pBuffer[4] = 0x0d;
+		QueuePacket(outapp);
+		safe_delete(outapp);
+	}
+}
+
+void Client::Handle_OP_TargetMouse(const EQApplicationPacket *app)
+{
+	if (app->size != sizeof(ClientTarget_Struct)) {
 		LogError("OP size error: OP_TargetMouse expected:[{}] got:[{}]", sizeof(ClientTarget_Struct), app->size);
 		return;
 	}
@@ -14520,157 +14651,108 @@ void Client::Handle_OP_TargetCommand(const EQApplicationPacket *app)
 	if (g && g->HasRole(this, RolePuller))
 		g->SetGroupPullerTarget(GetTarget());
 
-	// For /target, send reject or success packet
-	if (app->GetOpcode() == OP_TargetCommand) {
-		if (GetTarget() && !GetTarget()->CastToMob()->IsInvisible(this) && (DistanceSquared(m_Position, GetTarget()->GetPosition()) <= TARGETING_RANGE*TARGETING_RANGE || GetGM())) {
-			if (GetTarget()->GetBodyType() == BT_NoTarget2 || GetTarget()->GetBodyType() == BT_Special
-				|| GetTarget()->GetBodyType() == BT_NoTarget)
-			{
-				//Targeting something we shouldn't with /target
-				//but the client allows this without MQ so you don't flag it
-				auto outapp = new EQApplicationPacket(OP_TargetReject, sizeof(TargetReject_Struct));
-				outapp->pBuffer[0] = 0x2f;
-				outapp->pBuffer[1] = 0x01;
-				outapp->pBuffer[4] = 0x0d;
-				if (GetTarget())
-				{
-					SetTarget(nullptr);
-				}
-				QueuePacket(outapp);
-				safe_delete(outapp);
-				return;
-			}
-
-			QueuePacket(app);
-
-			GetTarget()->IsTargeted(1);
-			SendHPUpdate();
-		}
-		else
-		{
-			auto outapp = new EQApplicationPacket(OP_TargetReject, sizeof(TargetReject_Struct));
-			outapp->pBuffer[0] = 0x2f;
-			outapp->pBuffer[1] = 0x01;
-			outapp->pBuffer[4] = 0x0d;
-			if (GetTarget())
-			{
-				SetTarget(nullptr);
-			}
-			QueuePacket(outapp);
-			safe_delete(outapp);
-		}
-	}
-	else
+	if (GetTarget())
 	{
-		if (GetTarget())
+		if (GetGM())
 		{
-			if (GetGM())
-			{
-				GetTarget()->IsTargeted(1);
-				return;
-			}
-			else if (RuleB(Character, AllowMQTarget))
-			{
-				GetTarget()->IsTargeted(1);
-				return;
-			}
-			else if (cheat_manager.GetExemptStatus(Assist)) {
-				GetTarget()->IsTargeted(1);
-				cheat_manager.SetExemptStatus(Assist, false);
-				return;
-			}
-			else if (GetTarget()->IsClient())
-			{
-				//make sure this client is in our raid/group
-				GetTarget()->IsTargeted(1);
-				return;
-			}
-			else if (GetTarget()->GetBodyType() == BT_NoTarget2 || GetTarget()->GetBodyType() == BT_Special
-				|| GetTarget()->GetBodyType() == BT_NoTarget)
-			{
-				auto message = fmt::format(
-					"[{}] attempting to target something untargetable [{}] bodytype [{}]",
-					GetName(),
-					GetTarget()->GetName(),
-					(int) GetTarget()->GetBodyType()
-				);
-				RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
+			GetTarget()->IsTargeted(1);
+			return;
+		}
+		else if (RuleB(Character, AllowMQTarget))
+		{
+			GetTarget()->IsTargeted(1);
+			return;
+		}
+		else if (cheat_manager.GetExemptStatus(Assist)) {
+			GetTarget()->IsTargeted(1);
+			cheat_manager.SetExemptStatus(Assist, false);
+			return;
+		}
+		else if (GetTarget()->IsClient())
+		{
+			//make sure this client is in our raid/group
+			GetTarget()->IsTargeted(1);
+			return;
+		}
+		else if (GetTarget()->GetBodyType() == BT_NoTarget2 || GetTarget()->GetBodyType() == BT_Special
+			|| GetTarget()->GetBodyType() == BT_NoTarget)
+		{
+			auto message = fmt::format(
+				"[{}] attempting to target something untargetable [{}] bodytype [{}]",
+				GetName(),
+				GetTarget()->GetName(),
+				(int) GetTarget()->GetBodyType()
+			);
+			RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
 
-				SetTarget((Mob*)nullptr);
-				return;
-			}
-			else if (cheat_manager.GetExemptStatus(Port)) {
-				GetTarget()->IsTargeted(1);
-				return;
-			}
-			else if (cheat_manager.GetExemptStatus(Sense)) {
-				GetTarget()->IsTargeted(1);
-				cheat_manager.SetExemptStatus(Sense, false);
-				return;
-			}
-			else if (IsXTarget(GetTarget()))
+			SetTarget((Mob*)nullptr);
+			return;
+		}
+		else if (cheat_manager.GetExemptStatus(Port)) {
+			GetTarget()->IsTargeted(1);
+			return;
+		}
+		else if (cheat_manager.GetExemptStatus(Sense)) {
+			GetTarget()->IsTargeted(1);
+			cheat_manager.SetExemptStatus(Sense, false);
+			return;
+		}
+		else if (IsXTarget(GetTarget()))
+		{
+			GetTarget()->IsTargeted(1);
+			return;
+		}
+		else if (GetTarget()->IsPetOwnerClient())
+		{
+			GetTarget()->IsTargeted(1);
+			return;
+		}
+		else if (GetBindSightTarget())
+		{
+			if (DistanceSquared(GetBindSightTarget()->GetPosition(), GetTarget()->GetPosition()) > (zone->newzone_data.maxclip*zone->newzone_data.maxclip))
 			{
-				GetTarget()->IsTargeted(1);
-				return;
-			}
-			else if (GetTarget()->IsPetOwnerClient())
-			{
-				GetTarget()->IsTargeted(1);
-				return;
-			}
-			else if (GetBindSightTarget())
-			{
-				if (DistanceSquared(GetBindSightTarget()->GetPosition(), GetTarget()->GetPosition()) > (zone->newzone_data.maxclip*zone->newzone_data.maxclip))
+				if (DistanceSquared(m_Position, GetTarget()->GetPosition()) > (zone->newzone_data.maxclip*zone->newzone_data.maxclip))
 				{
-					if (DistanceSquared(m_Position, GetTarget()->GetPosition()) > (zone->newzone_data.maxclip*zone->newzone_data.maxclip))
-					{
-						auto message = fmt::format(
-						    "[{}] attempting to target something beyond the clip plane of {:.2f} "
-						    "units, from ({:.2f}, {:.2f}, {:.2f}) to {} ({:.2f}, {:.2f}, "
-						    "{:.2f})",
-						    GetName(),
-						    (zone->newzone_data.maxclip * zone->newzone_data.maxclip), GetX(),
-						    GetY(), GetZ(), GetTarget()->GetName(), GetTarget()->GetX(),
-						    GetTarget()->GetY(), GetTarget()->GetZ());
+					auto message = fmt::format(
+						"[{}] attempting to target something beyond the clip plane of {:.2f} "
+						"units, from ({:.2f}, {:.2f}, {:.2f}) to {} ({:.2f}, {:.2f}, "
+						"{:.2f})",
+						GetName(),
+						(zone->newzone_data.maxclip * zone->newzone_data.maxclip), GetX(),
+						GetY(), GetZ(), GetTarget()->GetName(), GetTarget()->GetX(),
+						GetTarget()->GetY(), GetTarget()->GetZ());
 
-						RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
-						SetTarget(nullptr);
-						return;
-					}
+					RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
+					SetTarget(nullptr);
+					return;
 				}
 			}
-			else if (DistanceSquared(m_Position, GetTarget()->GetPosition()) > (zone->newzone_data.maxclip*zone->newzone_data.maxclip))
-			{
-				auto message = fmt::format(
-					"{} attempting to target something beyond the clip plane of {:.2f} "
-					"units, from ({:.2f}, {:.2f}, {:.2f}) to {} ({:.2f}, {:.2f}, {:.2f})",
-					GetName(),
-					(zone->newzone_data.maxclip * zone->newzone_data.maxclip),
-					GetX(),
-					GetY(),
-					GetZ(),
-					GetTarget()->GetName(),
-					GetTarget()->GetX(),
-					GetTarget()->GetY(),
-					GetTarget()->GetZ()
-				);
-
-				RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
-				SetTarget(nullptr);
-				return;
-			}
-
-			GetTarget()->IsTargeted(1);
 		}
+		else if (DistanceSquared(m_Position, GetTarget()->GetPosition()) > (zone->newzone_data.maxclip*zone->newzone_data.maxclip))
+		{
+			auto message = fmt::format(
+				"{} attempting to target something beyond the clip plane of {:.2f} "
+				"units, from ({:.2f}, {:.2f}, {:.2f}) to {} ({:.2f}, {:.2f}, {:.2f})",
+				GetName(),
+				(zone->newzone_data.maxclip * zone->newzone_data.maxclip),
+				GetX(),
+				GetY(),
+				GetZ(),
+				GetTarget()->GetName(),
+				GetTarget()->GetX(),
+				GetTarget()->GetY(),
+				GetTarget()->GetZ()
+			);
+
+			RecordPlayerEventLog(PlayerEvent::POSSIBLE_HACK, PlayerEvent::PossibleHackEvent{.message = message});
+			SetTarget(nullptr);
+			return;
+		}
+
+		GetTarget()->IsTargeted(1);
 	}
 	return;
 }
-
-void Client::Handle_OP_TargetMouse(const EQApplicationPacket *app)
-{
-	Handle_OP_TargetCommand(app);
-}
-
 void Client::Handle_OP_TaskHistoryRequest(const EQApplicationPacket *app)
 {
 
@@ -15811,14 +15893,87 @@ void Client::Handle_OP_XTargetRequest(const EQApplicationPacket *app)
 	case RaidAssist1:
 	case RaidAssist2:
 	case RaidAssist3:
+	{
+		struct AssistType {
+			XTargetType type;
+			int32       assist_slot;
+		};
+
+		std::vector<AssistType> assist_types = {
+			{ RaidAssist1, MAIN_ASSIST_1_SLOT },
+			{ RaidAssist2, MAIN_ASSIST_2_SLOT },
+			{ RaidAssist3, MAIN_ASSIST_3_SLOT }
+		};
+
+		for (auto& t : assist_types) {
+			if (t.type == Type) {
+				Raid* r = GetRaid();
+				if (r) {
+					Client* ma = entity_list.GetClientByName(r->main_assister_pcs[t.assist_slot]);
+					if (ma) {
+						UpdateXTargetType(t.type, ma, ma->GetName());
+					}
+				}
+			}
+		}
+		break;
+	}
+
 	case RaidAssist1Target:
 	case RaidAssist2Target:
 	case RaidAssist3Target:
+	{
+		struct AssistType {
+			XTargetType type;
+			int32       assist_slot;
+		};
+
+		std::vector<AssistType> assist_types = {
+			{ RaidAssist1Target, MAIN_ASSIST_1_SLOT },
+			{ RaidAssist2Target, MAIN_ASSIST_2_SLOT },
+			{ RaidAssist3Target, MAIN_ASSIST_3_SLOT }
+		};
+
+		for (auto& t : assist_types) {
+			if (t.type == Type) {
+				Raid* r = GetRaid();
+				if (r) {
+					Client* ma = entity_list.GetClientByName(r->main_assister_pcs[t.assist_slot]);
+					if (ma && ma->GetTarget()) {
+						UpdateXTargetType(t.type, ma->GetTarget(), ma->GetTarget()->GetName());
+					}
+				}
+			}
+		}
+		break;
+	}
+
 	case RaidMarkTarget1:
 	case RaidMarkTarget2:
 	case RaidMarkTarget3:
 	{
-		// Not implemented yet.
+		struct AssistType {
+			XTargetType type;
+			int32       assist_slot;
+		};
+
+		std::vector<AssistType> assist_types = {
+			{ RaidMarkTarget1, MAIN_MARKER_1_SLOT },
+			{ RaidMarkTarget2, MAIN_MARKER_2_SLOT },
+			{ RaidMarkTarget3, MAIN_MARKER_3_SLOT }
+		};
+
+		for (auto& t : assist_types) {
+			if (t.type == Type) {
+				Raid* r = GetRaid();
+				if (r) {
+					auto mm = entity_list.GetNPCByID(r->marked_npcs[t.assist_slot].entity_id);
+					if (mm) {
+						UpdateXTargetType(t.type, mm->CastToMob(), mm->CastToMob()->GetName());
+					}
+				}
+			}
+		}
 		break;
 	}
 
@@ -16200,5 +16355,142 @@ void Client::RecordKilledNPCEvent(NPC *n)
 			};
 			RecordPlayerEventLog(c.event, e);
 		}
+	}
+}
+
+void Client::Handle_OP_RaidDelegateAbility(const EQApplicationPacket *app)
+{
+	if (app->size != sizeof(DelegateAbility_Struct)) {
+		LogDebug(
+			"Size mismatch in OP_RaidDelegateAbility expected [{}] got [{}]",
+			sizeof(DelegateAbility_Struct),
+			app->size
+		);
+		DumpPacket(app);
+		return;
+	}
+
+	DelegateAbility_Struct *das = (DelegateAbility_Struct *) app->pBuffer;
+
+	switch (das->DelegateAbility) {
+		case RaidDelegateMainAssist: {
+			auto r = GetRaid();
+			if (r) {
+				r->DelegateAbilityAssist(this, das->Name);
+			}
+			break;
+		}
+		case RaidDelegateMainMarker: {
+			auto r = GetRaid();
+			if (r) {
+				r->DelegateAbilityMark(this, das->Name);
+			}
+			break;
+		}
+		default:
+			LogDebug("RaidDelegateAbility default case");
+			break;
+	}
+}
+
+void Client::Handle_OP_RaidClearNPCMarks(const EQApplicationPacket* app)
+{
+	if (app->size != 0) {
+		LogDebug("Size mismatch in OP_RaidClearNPCMark expected [{}] got [{}]", 0, app->size);
+		DumpPacket(app);
+		return;
+	}
+
+	auto r = GetRaid();
+	if (r) {
+		r->RaidClearNPCMarks(this);
+	}
+}
+
+void Client::RecordStats()
+{
+	auto r = CharacterStatsRecordRepository::FindOne(
+		database,
+		CharacterID()
+	);
+
+	r.status                   = Admin();
+	r.name                     = GetCleanName();
+	r.aa_points                = GetAAPoints() + GetSpentAA();
+	r.level                    = GetLevel();
+	r.class_                   = GetBaseClass();
+	r.race                     = GetBaseRace();
+	r.hp                       = GetMaxHP() - GetSpellBonuses().HP;
+	r.mana                     = GetMaxMana() - GetSpellBonuses().Mana;
+	r.endurance                = GetMaxEndurance() - GetSpellBonuses().Endurance;
+	r.ac                       = GetDisplayAC() - GetSpellBonuses().AC;
+	r.strength                 = GetSTR() - GetSpellBonuses().STR;
+	r.stamina                  = GetSTA() - GetSpellBonuses().STA;
+	r.dexterity                = GetDEX() - GetSpellBonuses().DEX;
+	r.agility                  = GetAGI() - GetSpellBonuses().AGI;
+	r.intelligence             = GetINT() - GetSpellBonuses().INT;
+	r.wisdom                   = GetWIS() - GetSpellBonuses().WIS;
+	r.charisma                 = GetCHA() - GetSpellBonuses().CHA;
+	r.magic_resist             = GetMR() - GetSpellBonuses().MR;
+	r.fire_resist              = GetFR() - GetSpellBonuses().FR;
+	r.cold_resist              = GetCR() - GetSpellBonuses().CR;
+	r.poison_resist            = GetPR() - GetSpellBonuses().PR;
+	r.disease_resist           = GetDR() - GetSpellBonuses().DR;
+	r.corruption_resist        = GetCorrup() - GetSpellBonuses().Corrup;
+	r.heroic_strength          = GetHeroicSTR() - GetSpellBonuses().HeroicSTR;
+	r.heroic_stamina           = GetHeroicSTA() - GetSpellBonuses().HeroicSTA;
+	r.heroic_dexterity         = GetHeroicDEX() - GetSpellBonuses().HeroicDEX;
+	r.heroic_agility           = GetHeroicAGI() - GetSpellBonuses().HeroicAGI;
+	r.heroic_intelligence      = GetHeroicINT() - GetSpellBonuses().HeroicINT;
+	r.heroic_wisdom            = GetHeroicWIS() - GetSpellBonuses().HeroicWIS;
+	r.heroic_charisma          = GetHeroicCHA() - GetSpellBonuses().HeroicCHA;
+	r.heroic_magic_resist      = GetHeroicMR() - GetSpellBonuses().HeroicMR;
+	r.heroic_fire_resist       = GetHeroicFR() - GetSpellBonuses().HeroicFR;
+	r.heroic_cold_resist       = GetHeroicCR() - GetSpellBonuses().HeroicCR;
+	r.heroic_poison_resist     = GetHeroicPR() - GetSpellBonuses().HeroicPR;
+	r.heroic_disease_resist    = GetHeroicDR() - GetSpellBonuses().HeroicDR;
+	r.heroic_corruption_resist = GetHeroicCorrup() - GetSpellBonuses().HeroicCorrup;
+	r.haste                    = GetHaste();
+	r.accuracy                 = GetAccuracy() - GetSpellBonuses().Accuracy[EQ::skills::HIGHEST_SKILL + 1];
+	r.attack                   = GetTotalATK() - GetSpellBonuses().ATK;
+	r.avoidance                = GetAvoidance() - GetSpellBonuses().AvoidMeleeChance;
+	r.clairvoyance             = GetClair() - GetSpellBonuses().Clairvoyance;
+	r.combat_effects           = GetCombatEffects() - GetSpellBonuses().ProcChance;
+	r.damage_shield_mitigation = GetDSMit() - GetSpellBonuses().DSMitigation;
+	r.damage_shield            = GetDS() - GetSpellBonuses().DamageShield;
+	r.dot_shielding            = GetDoTShield() - GetSpellBonuses().DoTShielding;
+	r.hp_regen                 = GetHPRegen() - GetSpellBonuses().HPRegen;
+	r.mana_regen               = GetManaRegen() - GetSpellBonuses().ManaRegen;
+	r.endurance_regen          = GetEnduranceRegen() - GetSpellBonuses().EnduranceRegen;
+	r.shielding                = GetShielding() - GetSpellBonuses().MeleeMitigation;
+	r.spell_damage             = GetSpellDmg() - GetSpellBonuses().SpellDmg;
+	r.spell_shielding          = GetSpellShield() - GetSpellBonuses().SpellShield;
+	r.strikethrough            = GetStrikeThrough() - GetSpellBonuses().StrikeThrough;
+	r.stun_resist              = GetStunResist() - GetSpellBonuses().StunResist;
+	r.backstab                 = 0;
+	r.wind                     = GetWindMod();
+	r.brass                    = GetBrassMod();
+	r.string                   = GetStringMod();
+	r.percussion               = GetPercMod();
+	r.singing                  = GetSingMod();
+	r.baking                   = GetSkill(EQ::skills::SkillType::SkillBaking);
+	r.alchemy                  = GetSkill(EQ::skills::SkillType::SkillAlchemy);
+	r.jewelry                  = GetSkill(EQ::skills::SkillType::SkillJewelryMaking);
+	r.tailoring                = GetSkill(EQ::skills::SkillType::SkillTailoring);
+	r.blacksmithing            = GetSkill(EQ::skills::SkillType::SkillBlacksmithing);
+	r.fletching                = GetSkill(EQ::skills::SkillType::SkillFletching);
+	r.brewing                  = GetSkill(EQ::skills::SkillType::SkillBrewing);
+	r.fishing                  = GetSkill(EQ::skills::SkillType::SkillFishing);
+	r.pottery                  = GetSkill(EQ::skills::SkillType::SkillPottery);
+	r.alcohol                  = GetSkill(EQ::skills::SkillType::SkillAlcoholTolerance);
+	r.tinkering                = GetSkill(EQ::skills::SkillType::SkillTinkering);
+	r.updated_at               = std::time(nullptr);
+
+	if (r.character_id > 0) {
+		CharacterStatsRecordRepository::UpdateOne(database, r);
+	} else {
+		r.character_id = CharacterID();
+		r.created_at = std::time(nullptr);
+		CharacterStatsRecordRepository::InsertOne(database, r);
 	}
 }
