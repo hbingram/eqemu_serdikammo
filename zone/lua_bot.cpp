@@ -494,6 +494,52 @@ void Lua_Bot::AddItem(const luabind::object& item_table) {
 	}
 }
 
+std::string Lua_Bot::GetClassAbbreviation() {
+	Lua_Safe_Call_String();
+	return GetPlayerClassAbbreviation(self->GetClass());
+}
+
+std::string Lua_Bot::GetRaceAbbreviation() {
+	Lua_Safe_Call_String();
+	return GetPlayerRaceAbbreviation(self->GetBaseRace());
+}
+
+void Lua_Bot::DeleteBucket(std::string bucket_name)
+{
+	Lua_Safe_Call_Void();
+	self->DeleteBucket(bucket_name);
+}
+
+std::string Lua_Bot::GetBucket(std::string bucket_name)
+{
+	Lua_Safe_Call_String();
+	return self->GetBucket(bucket_name);
+}
+
+std::string Lua_Bot::GetBucketExpires(std::string bucket_name)
+{
+	Lua_Safe_Call_String();
+	return self->GetBucketExpires(bucket_name);
+}
+
+std::string Lua_Bot::GetBucketRemaining(std::string bucket_name)
+{
+	Lua_Safe_Call_String();
+	return self->GetBucketRemaining(bucket_name);
+}
+
+void Lua_Bot::SetBucket(std::string bucket_name, std::string bucket_value)
+{
+	Lua_Safe_Call_Void();
+	self->SetBucket(bucket_name, bucket_value);
+}
+
+void Lua_Bot::SetBucket(std::string bucket_name, std::string bucket_value, std::string expiration)
+{
+	Lua_Safe_Call_Void();
+	self->SetBucket(bucket_name, bucket_value, expiration);
+}
+
 luabind::scope lua_register_bot() {
 	return luabind::class_<Lua_Bot, Lua_Mob>("Bot")
 	.def(luabind::constructor<>())
@@ -521,6 +567,7 @@ luabind::scope lua_register_bot() {
 	.def("Camp", (void(Lua_Bot::*)(bool))&Lua_Bot::Camp)
 	.def("CountBotItem", (uint32(Lua_Bot::*)(uint32))&Lua_Bot::CountBotItem)
 	.def("CountItemEquippedByID", (int(Lua_Bot::*)(uint32))&Lua_Bot::CountItemEquippedByID)
+	.def("DeleteBucket", (void(Lua_Bot::*)(std::string))&Lua_Bot::DeleteBucket)
 	.def("Escape", (void(Lua_Bot::*)(void))&Lua_Bot::Escape)
 	.def("Fling", (void(Lua_Bot::*)(float,float,float))&Lua_Bot::Fling)
 	.def("Fling", (void(Lua_Bot::*)(float,float,float,bool))&Lua_Bot::Fling)
@@ -541,6 +588,10 @@ luabind::scope lua_register_bot() {
 	.def("GetBotID", (uint32(Lua_Bot::*)(void))&Lua_Bot::GetBotID)
 	.def("GetBotItem", (Lua_ItemInst(Lua_Bot::*)(uint16))&Lua_Bot::GetBotItem)
 	.def("GetBotItemIDBySlot", (uint32(Lua_Bot::*)(uint16))&Lua_Bot::GetBotItemIDBySlot)
+	.def("GetBucket", (std::string(Lua_Bot::*)(std::string))&Lua_Bot::GetBucket)
+	.def("GetBucketExpires", (std::string(Lua_Bot::*)(std::string))&Lua_Bot::GetBucketExpires)
+	.def("GetBucketRemaining", (std::string(Lua_Bot::*)(std::string))&Lua_Bot::GetBucketRemaining)
+	.def("GetClassAbbreviation", (std::string(Lua_Bot::*)(void))&Lua_Bot::GetClassAbbreviation)
 	.def("GetExpansionBitmask", (int(Lua_Bot::*)(void))&Lua_Bot::GetExpansionBitmask)
 	.def("GetGroup", (Lua_Group(Lua_Bot::*)(void))&Lua_Bot::GetGroup)
 	.def("GetHealAmount", (int(Lua_Bot::*)(void))&Lua_Bot::GetHealAmount)
@@ -548,6 +599,7 @@ luabind::scope lua_register_bot() {
 	.def("GetItemAt", (Lua_ItemInst(Lua_Bot::*)(int16))&Lua_Bot::GetItemAt)
 	.def("GetItemIDAt", (int(Lua_Bot::*)(int16))&Lua_Bot::GetItemIDAt)
 	.def("GetOwner", (Lua_Mob(Lua_Bot::*)(void))&Lua_Bot::GetOwner)
+	.def("GetRaceAbbreviation", (std::string(Lua_Bot::*)(void))&Lua_Bot::GetRaceAbbreviation)
 	.def("GetRawItemAC", (int(Lua_Bot::*)(void))&Lua_Bot::GetRawItemAC)
 	.def("GetSpellDamage", (int(Lua_Bot::*)(void))&Lua_Bot::GetSpellDamage)
 	.def("HasAugmentEquippedByID", (bool(Lua_Bot::*)(uint32))&Lua_Bot::HasAugmentEquippedByID)
@@ -564,6 +616,8 @@ luabind::scope lua_register_bot() {
 	.def("ReloadBotSpellSettings", (void(Lua_Bot::*)(void))&Lua_Bot::ReloadBotSpellSettings)
 	.def("RemoveBotItem", (void(Lua_Bot::*)(uint32))&Lua_Bot::RemoveBotItem)
 	.def("SendSpellAnim", (void(Lua_Bot::*)(uint16,uint16))&Lua_Bot::SendSpellAnim)
+	.def("SetBucket", (void(Lua_Bot::*)(std::string,std::string))&Lua_Bot::SetBucket)
+	.def("SetBucket", (void(Lua_Bot::*)(std::string,std::string,std::string))&Lua_Bot::SetBucket)
 	.def("SetExpansionBitmask", (void(Lua_Bot::*)(int))&Lua_Bot::SetExpansionBitmask)
 	.def("SetExpansionBitmask", (void(Lua_Bot::*)(int,bool))&Lua_Bot::SetExpansionBitmask)
 	.def("SetSpellDuration", (void(Lua_Bot::*)(int))&Lua_Bot::SetSpellDuration)

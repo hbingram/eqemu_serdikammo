@@ -2958,7 +2958,7 @@ void Mob::AddToHateList(Mob* other, int64 hate /*= 0*/, int64 damage /*= 0*/, bo
 	if (GetSpecialAbility(IMMUNE_AGGRO_CLIENT) && other->IsClient())
 		return;
 
-	if (IsValidSpell(spell_id) && NoDetrimentalSpellAggro(spell_id))
+	if (IsValidSpell(spell_id) && IsNoDetrimentalSpellAggroSpell(spell_id))
 		return;
 
 	if (other == myowner)
@@ -6457,4 +6457,9 @@ int64 Mob::GetHPRegenPerSecond() const
 int64 Mob::GetManaRegen() const
 {
 	return mana_regen;
+}
+
+int64 Mob::GetEnduranceRegen() const
+{
+	return 0; // not implemented
 }
