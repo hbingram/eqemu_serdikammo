@@ -441,13 +441,18 @@ void ClearMappedOpcode(EmuOpcode op)
 int Client::HandlePacket(const EQApplicationPacket *app)
 {
 	auto o = eqs->GetOpcodeManager();
-	LogPacketClientServer(
-		"[{}] [{:#06x}] Size [{}] {}",
-		OpcodeManager::EmuToName(app->GetOpcode()),
-		o->EmuToEQ(app->GetOpcode()) == 0 ? app->GetProtocolOpcode() : o->EmuToEQ(app->GetOpcode()),
-		app->Size(),
-		(LogSys.IsLogEnabled(Logs::Detail, Logs::PacketClientServer) ? DumpPacketToString(app) : "")
-	);
+
+	/* BRYANT083123-START-: keep from logging OP_ClientUpdate and OP_FloatListThing */
+	if ((app->GetOpcode() != OP_ClientUpdate) && (app->GetOpcode() != OP_FloatListThing))
+	{
+		LogPacketClientServer(
+			"[{}] [{:#06x}] Size [{}] {}",
+			OpcodeManager::EmuToName(app->GetOpcode()),
+			o->EmuToEQ(app->GetOpcode()) == 0 ? app->GetProtocolOpcode() : o->EmuToEQ(app->GetOpcode()),
+			app->Size(),
+			(LogSys.IsLogEnabled(Logs::Detail, Logs::PacketClientServer) ? DumpPacketToString(app) : "")
+		);
+	}
 
 	EmuOpcode opcode = app->GetOpcode();
 	if (opcode == OP_AckPacket) {
