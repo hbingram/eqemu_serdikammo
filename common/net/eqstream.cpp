@@ -68,6 +68,7 @@ void EQ::Net::EQStream::QueuePacket(const EQApplicationPacket *p, bool ack_req) 
 
 	/* BRYANT083123-START-: keep from logging OP_ClientUpdate and OP_FloatListThing */
 	if ((p->GetOpcode() != OP_ClientUpdate) && (p->GetOpcode() != OP_FloatListThing))
+	/* BRYANT083123-END- */ 
 	{
 		LogPacketServerClient(
 			"[{}] [{:#06x}] Size [{}] {}",
