@@ -441,13 +441,18 @@ void ClearMappedOpcode(EmuOpcode op)
 int Client::HandlePacket(const EQApplicationPacket *app)
 {
 	auto o = eqs->GetOpcodeManager();
-	LogPacketClientServer(
-		"[{}] [{:#06x}] Size [{}] {}",
-		OpcodeManager::EmuToName(app->GetOpcode()),
-		o->EmuToEQ(app->GetOpcode()) == 0 ? app->GetProtocolOpcode() : o->EmuToEQ(app->GetOpcode()),
-		app->Size(),
-		(LogSys.IsLogEnabled(Logs::Detail, Logs::PacketClientServer) ? DumpPacketToString(app) : "")
-	);
+
+	/* BRYANT083123-START-: keep from logging OP_ClientUpdate and OP_FloatListThing */
+	if ((app->GetOpcode() != OP_ClientUpdate) && (app->GetOpcode() != OP_FloatListThing))
+	{
+		LogPacketClientServer(
+			"[{}] [{:#06x}] Size [{}] {}",
+			OpcodeManager::EmuToName(app->GetOpcode()),
+			o->EmuToEQ(app->GetOpcode()) == 0 ? app->GetProtocolOpcode() : o->EmuToEQ(app->GetOpcode()),
+			app->Size(),
+			(LogSys.IsLogEnabled(Logs::Detail, Logs::PacketClientServer) ? DumpPacketToString(app) : "")
+		);
+	}
 
 	EmuOpcode opcode = app->GetOpcode();
 	if (opcode == OP_AckPacket) {
@@ -4311,21 +4316,29 @@ void Client::Handle_OP_CastSpell(const EQApplicationPacket *app)
 		uint16 spell_to_cast = castspell->spell_id;
 		if (IsValidSpell(spell_to_cast)) {
 			const SPDat_Spell_Struct& spell = spells[spell_to_cast];
-			uint8 level_to_use = 255;
-			for (int i = 0; i < sizeof(spell.classes); i++)
+			if (spell.is_discipline)
 			{
-				if (spell.classes[i] < level_to_use) { level_to_use = spell.classes[i]; }
-			}
-			if (level_to_use > GetLevel()) {
-				MessageString(Chat::Red, SPELL_LEVEL_TO_LOW);
-				InterruptSpell();
+				InterruptSpell(spell_to_cast);
 			}
 			else
 			{
-				CastSpell(spell_to_cast, castspell->target_id, slot);
+				uint8 level_to_use = 255;
+				for (int i = 0; i < sizeof(spell.classes); i++)
+				{
+					if (spell.classes[i] < level_to_use) { level_to_use = spell.classes[i]; }
+				}
+				if (level_to_use > GetLevel()) {
+					MessageString(Chat::Red, SPELL_LEVEL_TO_LOW);
+					InterruptSpell();
+				}
+				else
+				{
+					CastSpell(spell_to_cast, castspell->target_id, slot);
+				}
 			}
 		}
-		else {
+		else
+		{
 			InterruptSpell();
 		}
 	}

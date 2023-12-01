@@ -3584,10 +3584,21 @@ void Client::LinkDead()
 }
 
 uint8 Client::SlotConvert(uint8 slot,bool bracer){
-	uint8 slot2 = 0; // why are we returning MainCharm instead of INVALID_INDEX? (must be a pre-charm segment...)
+	// BRYANT120123-START-: return something other than 0 on default
+	//uint8 slot2 = 0; // why are we returning MainCharm instead of INVALID_INDEX? (must be a pre-charm segment...)
+	uint8 slot2 = 255; // why are we returning MainCharm instead of INVALID_INDEX? (must be a pre-charm segment...)
+	// BRYANT120123-END-
 	if(bracer)
 		return EQ::invslot::slotWrist2;
 	switch(slot) {
+	// BRYANT120123-START-: handle primary and secondary WearChange
+	case EQ::invslot::slotPrimary:
+		slot2 = EQ::textures::weaponPrimary;
+		break;
+	case EQ::invslot::slotSecondary:
+		slot2 = EQ::textures::weaponSecondary;
+		break;
+	// BRYANT120123-END-
 	case EQ::textures::armorHead:
 		slot2 = EQ::invslot::slotHead;
 		break;
@@ -3614,8 +3625,19 @@ uint8 Client::SlotConvert(uint8 slot,bool bracer){
 }
 
 uint8 Client::SlotConvert2(uint8 slot){
-	uint8 slot2 = 0; // same as above...
+	// BRYANT120123-START-: return something other than 0 on default
+	//uint8 slot2 = 0; // same as above...
+	uint8 slot2 = 255; // same as above...
+	// BRYANT120123-END-
 	switch(slot){
+	// BRYANT120123-START-: handle primary and secondary WearChange
+	case EQ::invslot::slotPrimary:
+		slot2 = EQ::textures::weaponPrimary;
+		break;
+	case EQ::invslot::slotSecondary:
+		slot2 = EQ::textures::weaponSecondary;
+		break;
+	// BRYANT120123-END-
 	case EQ::invslot::slotHead:
 		slot2 = EQ::textures::armorHead;
 		break;
