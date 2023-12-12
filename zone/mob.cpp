@@ -580,6 +580,11 @@ uint32 Mob::GetAppearanceValue(EmuAppearance iAppearance) {
 		case eaLooting: {
 			return ANIM_LOOT;
 		}
+		/* BRYANT121223-START-: Support spellwheel */
+		case eaCasting: {
+			return ANIM_CAST;
+		}
+		/* BRYANT121223-END- */
 		//to shup up compiler:
 		case _eaMaxAppearance:
 			break;
