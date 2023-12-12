@@ -78,6 +78,7 @@
 #define	ANIM_CROUCH		0x6f
 #define	ANIM_DEATH		0x73
 #define ANIM_LOOT		0x69
+#define ANIM_CAST		0xAA /* BRYANT121223-START-: Support spellwheel */
 
 constexpr int16 RECAST_TYPE_UNLINKED_ITEM = -1;
 
@@ -87,6 +88,7 @@ typedef enum {
 	eaCrouching,	//2
 	eaDead,			//3
 	eaLooting,		//4
+	eaCasting,		//5 /* BRYANT121223-START-: Support spellwheel */
 	_eaMaxAppearance
 } EmuAppearance;
 
