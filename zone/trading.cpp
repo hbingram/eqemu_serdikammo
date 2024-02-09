@@ -79,7 +79,12 @@ void Trade::Start(uint32 mob_id, bool initiate_with)
 }
 
 // Add item from a given slot to trade bucket (automatically does bag data too)
-void Trade::AddEntity(uint16 trade_slot_id, uint32 stack_size) {
+
+/* BRYANT083123-START-: skip using EQ::invslot::slotCursor */
+void Trade::AddEntity(uint16 from_slot_id, uint16 trade_slot_id, uint32 stack_size) {
+//void Trade::AddEntity(uint16 trade_slot_id, uint32 stack_size) {
+/* BRYANT083123-END- */
+
 	// TODO: review for inventory saves / consider changing return type to bool so failure can be passed to desync handler
 
 	if (!owner || !owner->IsClient()) {
@@ -96,10 +101,19 @@ void Trade::AddEntity(uint16 trade_slot_id, uint32 stack_size) {
 
 	// Item always goes into trade bucket from cursor
 	Client* client = owner->CastToClient();
-	EQ::ItemInstance* inst = client->GetInv().GetItem(EQ::invslot::slotCursor);
+
+	/* BRYANT083123-START-: skip using EQ::invslot::slotCursor */
+	EQ::ItemInstance* inst = client->GetInv().GetItem(from_slot_id);
+	//EQ::ItemInstance* inst = client->GetInv().GetItem(EQ::invslot::slotCursor);
+	/* BRYANT083123-END- */
 
 	if (!inst) {
-		client->Message(Chat::Red, "Error: Could not find item on your cursor!");
+
+		/* BRYANT083123-START-: skip using EQ::invslot::slotCursor */
+		client->Message(Chat::Red, "Error: Could not find item in your inventory!");
+		//client->Message(Chat::Red, "Error: Could not find item on your cursor!");
+		/* BRYANT083123-END- */
+
 		return;
 	}
 
@@ -129,7 +143,11 @@ void Trade::AddEntity(uint16 trade_slot_id, uint32 stack_size) {
 		if (_stack_size > 0)
 			inst->SetCharges(_stack_size);
 		else
-			client->DeleteItemInInventory(EQ::invslot::slotCursor);
+
+			/* BRYANT083123-START-: skip using EQ::invslot::slotCursor */
+			client->DeleteItemInInventory(from_slot_id);
+			//client->DeleteItemInInventory(EQ::invslot::slotCursor);
+			/* BRYANT083123-END- */
 
 		SendItemData(inst2, trade_slot_id);
 	}
@@ -144,7 +162,12 @@ void Trade::AddEntity(uint16 trade_slot_id, uint32 stack_size) {
 		LogTrading("[{}] added item [{}] to trade slot [{}]", owner->GetName(), inst->GetItem()->Name, trade_slot_id);
 
 		client->PutItemInInventory(trade_slot_id, *inst);
-		client->DeleteItemInInventory(EQ::invslot::slotCursor);
+
+		/* BRYANT083123-START-: skip using EQ::invslot::slotCursor */
+		client->DeleteItemInInventory(from_slot_id);
+		//client->DeleteItemInInventory(EQ::invslot::slotCursor);
+		/* BRYANT083123-END- */
+
 	}
 }
 

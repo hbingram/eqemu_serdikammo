@@ -867,7 +867,9 @@ bool Client::UseDiscipline(uint32 spell_id, uint32 target) {
 		return false;
 	}
 
+	// BRYANT052223-START-: allow any class to use any discipline
 	//make sure we have the spell...
+	/*
 	int r;
 	for(r = 0; r < MAX_PP_DISCIPLINES; r++) {
 		if(m_pp.disciplines.values[r] == spell_id)
@@ -875,6 +877,8 @@ bool Client::UseDiscipline(uint32 spell_id, uint32 target) {
 	}
 	if(r == MAX_PP_DISCIPLINES)
 		return false;	//not found.
+	*/
+	// BRYANT052223-END-: allow any class to use any discipline
 
 	//make sure we can use it..
 	if(!IsValidSpell(spell_id)) {
@@ -888,7 +892,18 @@ bool Client::UseDiscipline(uint32 spell_id, uint32 target) {
 
 	//can we use the spell?
 	const SPDat_Spell_Struct &spell = spells[spell_id];
-	uint8 level_to_use = spell.classes[GetClass() - 1];
+	
+	// BRYANT052223-START-: allow any class to use any discipline
+	if (!spell.is_discipline) {
+		return false;
+	}
+	uint8 level_to_use = 255;
+	for (int i = 0; i < sizeof(spell.classes); i++)
+	{
+		if (spell.classes[i] < level_to_use) { level_to_use = spell.classes[i]; }
+	}
+	// BRYANT052223-END-: allow any class to use any discipline
+	
 	if(level_to_use == 255) {
 		Message(Chat::Red, "Your class cannot learn from this tome.");
 		//should summon them a new one...

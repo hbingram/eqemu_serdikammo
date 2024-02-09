@@ -447,13 +447,18 @@ void ClearMappedOpcode(EmuOpcode op)
 int Client::HandlePacket(const EQApplicationPacket *app)
 {
 	auto o = eqs->GetOpcodeManager();
-	LogPacketClientServer(
-		"[{}] [{:#06x}] Size [{}] {}",
-		OpcodeManager::EmuToName(app->GetOpcode()),
-		o->EmuToEQ(app->GetOpcode()) == 0 ? app->GetProtocolOpcode() : o->EmuToEQ(app->GetOpcode()),
-		app->Size(),
-		(LogSys.IsLogEnabled(Logs::Detail, Logs::PacketClientServer) ? DumpPacketToString(app) : "")
-	);
+
+	/* BRYANT083123-START-: keep from logging OP_ClientUpdate and OP_FloatListThing */
+	if ((app->GetOpcode() != OP_ClientUpdate) && (app->GetOpcode() != OP_FloatListThing))
+	{
+		LogPacketClientServer(
+			"[{}] [{:#06x}] Size [{}] {}",
+			OpcodeManager::EmuToName(app->GetOpcode()),
+			o->EmuToEQ(app->GetOpcode()) == 0 ? app->GetProtocolOpcode() : o->EmuToEQ(app->GetOpcode()),
+			app->Size(),
+			(LogSys.IsLogEnabled(Logs::Detail, Logs::PacketClientServer) ? DumpPacketToString(app) : "")
+		);
+	}
 
 	EmuOpcode opcode = app->GetOpcode();
 	if (opcode == OP_AckPacket) {
@@ -4341,28 +4346,39 @@ void Client::Handle_OP_CastSpell(const EQApplicationPacket *app)
 		}
 	}
 
-	/* Memorized Spell */
-	if (m_pp.mem_spells[castspell->slot] && m_pp.mem_spells[castspell->slot] == castspell->spell_id) {
-		uint16 spell_to_cast = 0;
-		if (castspell->slot < EQ::spells::SPELL_GEM_COUNT) {
-			spell_to_cast = m_pp.mem_spells[castspell->slot];
-			if (spell_to_cast != castspell->spell_id) {
-				InterruptSpell(castspell->spell_id); //CHEATER!!!
-				return;
+	// BRYANT052223-START-: allow any class to use any spell
+	if(slot < CastingSlot::Item) {
+		uint16 spell_to_cast = castspell->spell_id;
+		if (IsValidSpell(spell_to_cast)) {
+			const SPDat_Spell_Struct& spell = spells[spell_to_cast];
+			if (spell.is_discipline)
+			{
+				InterruptSpell(spell_to_cast);
+			}
+			else
+			{
+				uint8 level_to_use = 255;
+				for (int i = 0; i < sizeof(spell.classes); i++)
+				{
+					if (spell.classes[i] < level_to_use) { level_to_use = spell.classes[i]; }
+				}
+				if (level_to_use > GetLevel()) {
+					MessageString(Chat::Red, SPELL_LEVEL_TO_LOW);
+					InterruptSpell();
+				}
+				else
+				{
+					CastSpell(spell_to_cast, castspell->target_id, slot);
+				}
 			}
 		}
-		else if (castspell->slot >= EQ::spells::SPELL_GEM_COUNT) {
-			InterruptSpell();
-			return;
-		}
-
-		if (IsValidSpell(spell_to_cast)) {
-			CastSpell(spell_to_cast, castspell->target_id, slot);
-		}
-		else {
+		else
+		{
 			InterruptSpell();
 		}
 	}
+	// BRYANT052223-END-: allow any class to use any spell
+
 	/* Spell Slot or Potion Belt Slot */
 	else if (slot == CastingSlot::Item || slot == CastingSlot::PotionBelt)	// ITEM or POTION cast
 	{
@@ -14447,7 +14463,13 @@ void Client::Handle_OP_SpawnAppearance(const EQApplicationPacket *app)
 			playeraction = 4;
 			SetFeigned(false);
 		}
-
+		/* BRYANT121223-START-: Support spellwheel */
+		else if (sa->parameter == ANIM_CAST) {
+			SetAppearance(eaCasting);
+			playeraction = 5;
+			SetFeigned(false);
+		}
+		/* BRYANT121223-END- */
 		else {
 			LogError("Client [{}] :: unknown appearance [{}]", name, (int)sa->parameter);
 			return;

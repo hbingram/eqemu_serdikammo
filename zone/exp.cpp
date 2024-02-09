@@ -995,6 +995,27 @@ uint32 Client::GetEXPForLevel(uint16 check_level)
 
 	uint16 check_levelm1 = check_level-1;
 	float mod;
+	/* BRYANT103123-START-: increase xp requirements between level 3 and 10 */
+	if (check_level < 3)
+		mod = 1.0;
+	else if (check_level < 4)
+		mod = 3.0;
+	else if (check_level < 5)
+		mod = 4.0;
+	else if (check_level < 6)
+		mod = 5.0;
+	else if (check_level < 7)
+		mod = 6.0;
+	else if (check_level < 8)
+		mod = 7.0;
+	else if (check_level < 9)
+		mod = 8.0;
+	else if (check_level < 10)
+		mod = 9.0;
+	else if (check_level < 11)
+		mod = 10.0;
+	else
+	/* BRYANT103123-END- */
 	if (check_level < 31)
 		mod = 1.0;
 	else if (check_level < 36)

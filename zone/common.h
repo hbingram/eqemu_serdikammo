@@ -799,8 +799,11 @@ public:
 	Mob* With();
 
 	// Add item from cursor slot to trade bucket (automatically does bag data too)
-	void AddEntity(uint16 trade_slot_id, uint32 stack_size);
 
+	/* BRYANT083123-START-: skip using EQ::invslot::slotCursor */
+	void AddEntity(uint16 from_slot_id, uint16 trade_slot_id, uint32 stack_size);
+	//void AddEntity(uint16 trade_slot_id, uint32 stack_size);
+	/* BRYANT083123-END- */
 
 public:
 	// Object state

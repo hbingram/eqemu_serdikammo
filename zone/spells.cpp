@@ -1147,12 +1147,17 @@ bool Client::CheckFizzle(uint16 spell_id)
 	int par_skill;
 	int act_skill;
 
-	par_skill = spells[spell_id].classes[GetClass()-1] * 5 - 10;//IIRC even if you are lagging behind the skill levels you don't fizzle much
-	if (par_skill > 235) {
-		par_skill = 235;
+	// BRYANT052223-START-: allow any class to use any spell
+	uint8 level_to_use = 255;
+	for (int i = 0; i < sizeof(spells[spell_id].classes); i++)
+	{
+		if (spells[spell_id].classes[i] < level_to_use) { level_to_use = spells[spell_id].classes[i]; }
 	}
-
-	par_skill += spells[spell_id].classes[GetClass()-1]; // maximum of 270 for level 65 spell
+	par_skill = level_to_use * 5 - 10;//IIRC even if you are lagging behind the skill levels you don't fizzle much
+	if (par_skill > 235)
+		par_skill = 235;
+	par_skill += level_to_use; // maximum of 270 for level 65 spell
+	// BRYANT052223-END-: allow any class to use any spell
 
 	act_skill = GetSkill(spells[spell_id].skill);
 	act_skill += GetLevel(); // maximum of whatever the client can cheat
@@ -1186,6 +1191,10 @@ bool Client::CheckFizzle(uint16 spell_id)
 	// the max that diff can be is +- 235
 	float diff = par_skill + static_cast<float>(spells[spell_id].base_difficulty) - act_skill;
 
+	// BRYANT052223-START-: allow any class to use any spell
+	if(GetWIS() > GetINT())	diff -= (GetWIS() - 125) / 20.0;
+	else 	diff -= (GetINT() - 125) / 20.0;
+	/*
 	// if you have high int/wis you fizzle less, you fizzle more if you are stupid
 	if (GetClass() == Class::Bard) {
 		diff -= (GetCHA() - 110) / 20.0;
@@ -1194,6 +1203,8 @@ bool Client::CheckFizzle(uint16 spell_id)
 	} else if (GetCasterClass() == 'I') {
 		diff -= (GetINT() - 125) / 20.0;
 	}
+	*/
+	// BRYANT052223-END-: allow any class to use any spell
 
 	// base fizzlechance is lets say 5%, we can make it lower for AA skills or whatever
 	float base_fizzle = 10;

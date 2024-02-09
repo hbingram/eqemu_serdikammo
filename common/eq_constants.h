@@ -75,6 +75,7 @@ namespace Animation {
 	constexpr uint32 Sitting   = 110;
 	constexpr uint32 Crouching = 111;
 	constexpr uint32 Lying     = 115;
+  constexpr uint32 Casting   = 170; /* BRYANT121223-START-: Support spellwheel */
 }
 
 constexpr int16 RECAST_TYPE_UNLINKED_ITEM = -1;
@@ -83,8 +84,9 @@ typedef enum {
 	eaStanding = 0,
 	eaSitting,		//1
 	eaCrouching,	//2
-	eaDead,			//3
+	eaDead,			  //3
 	eaLooting,		//4
+	eaCasting,		//5 /* BRYANT121223-START-: Support spellwheel */
 	_eaMaxAppearance
 } EmuAppearance;
 

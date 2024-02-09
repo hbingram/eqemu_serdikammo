@@ -1179,7 +1179,7 @@ int32	Client::CalcDR()
 	//racial bases
 	switch (GetBaseRace()) {
 		case HUMAN:
-			DR = 15;
+			DR = 25; // 15; /* BRYANT020924-START-: all resists start at 25 */
 			break;
 		case BARBARIAN:
 			DR = 15;
@@ -1249,7 +1249,7 @@ int32	Client::CalcDR()
 			DR += l - 49;
 		}
 	}
-	else if (c == Class::ShadowKnight || c == Class::Beastlord) {
+	else if (c == Class::ShadowKnight /* || c == Class::Beastlord /* BRYANT020924-START-: all resists start at 25 */) {
 		DR += 4;
 		int l = GetLevel();
 		if (l > 49) {
@@ -1271,7 +1271,7 @@ int32	Client::CalcPR()
 	//racial bases
 	switch (GetBaseRace()) {
 		case HUMAN:
-			PR = 15;
+			PR = 25; // 15; /* BRYANT020924-START-: all resists start at 25 */
 			break;
 		case BARBARIAN:
 			PR = 15;
@@ -1420,7 +1420,7 @@ int32	Client::CalcCR()
 			CR = 25;
 	}
 	int c = GetClass();
-	if (c == Class::Ranger || c == Class::Beastlord) {
+	if (c == Class::Ranger /* || c == Class::Beastlord /* BRYANT020924-START-: all resists start at 25 */) {
 		CR += 4;
 		int l = GetLevel();
 		if (l > 49) {

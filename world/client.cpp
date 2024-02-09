@@ -1026,6 +1026,7 @@ bool Client::HandlePacket(const EQApplicationPacket *app) {
 	EmuOpcode opcode = app->GetOpcode();
 
 	auto o = eqs->GetOpcodeManager();
+
 	LogPacketClientServer(
 		"[{}] [{:#06x}] Size [{}] {}",
 		OpcodeManager::EmuToName(app->GetOpcode()),
