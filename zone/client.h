@@ -112,16 +112,20 @@ enum { //scribing argument to MemorizeSpell
 
 //Modes for the zoning state of the client.
 typedef enum {
-	ZoneToSafeCoords, // Always send ZonePlayerToBind_Struct to client: Succor/Evac
-	GMSummon, // Always send ZonePlayerToBind_Struct to client: Only a GM Summon
-	ZoneToBindPoint, // Always send ZonePlayerToBind_Struct to client: Death Only
-	ZoneSolicited, // Always send ZonePlayerToBind_Struct to client: Portal, Translocate, Evac spells that have a x y z coord in the spell data
+	ZoneToSafeCoords,	// Always send ZonePlayerToBind_Struct to client: Succor/Evac
+	GMSummon,			// Always send ZonePlayerToBind_Struct to client: Only a GM Summon
+	GMHiddenSummon,		// Always send ZonePlayerToBind_Struct to client silently: Only a GM Summon
+	ZoneToBindPoint,	// Always send ZonePlayerToBind_Struct to client: Death Only
+	ZoneSolicited,		// Always send ZonePlayerToBind_Struct to client: Portal, Translocate, Evac spells that have a x y z coord in the spell data
 	ZoneUnsolicited,
-	GateToBindPoint, // Always send RequestClientZoneChange_Struct to client: Gate spell or Translocate To Bind Point spell
-	SummonPC, // In-zone GMMove() always: Call of the Hero spell or some other type of in zone only summons
-	Rewind, // Summon to /rewind location.
+	GateToBindPoint,	// Always send RequestClientZoneChange_Struct to client: Gate spell or Translocate To Bind Point spell
+	SummonPC,			// In-zone GMMove() always: Call of the Hero spell or some other type of in zone only summons
+	Rewind,				// Summon to /rewind location.
 	EvacToSafeCoords
 } ZoneMode;
+
+// translate above enum to a string
+std::string GetZoneModeString(ZoneMode mode);
 
 enum {
 	HideCorpseNone = 0,
@@ -244,6 +248,9 @@ public:
 	bool IsEXPEnabled() const;
 	void SetEXPEnabled(bool is_exp_enabled);
 
+	std::vector<EXPModifier> GetEXPModifiers();
+	void SetEXPModifiers(std::vector<EXPModifier> exp_modifiers);
+
 	void SetPrimaryWeaponOrnamentation(uint32 model_id);
 	void SetSecondaryWeaponOrnamentation(uint32 model_id);
 
@@ -254,7 +261,7 @@ public:
 	bool GotoPlayerRaid(const std::string& player_name);
 
 	//abstract virtual function implementations required by base abstract class
-	virtual bool Death(Mob* killerMob, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill);
+	virtual bool Death(Mob* killer_mob, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, KilledByTypes killed_by = KilledByTypes::Killed_NPC);
 	virtual void Damage(Mob* from, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, bool avoidable = true, int8 buffslot = -1, bool iBuffTic = false, eSpecialAttacks special = eSpecialAttacks::None);
 	virtual bool HasRaid() { return (GetRaid() ? true : false); }
 	virtual bool HasGroup() { return (GetGroup() ? true : false); }
@@ -332,7 +339,7 @@ public:
 	void QueuePacket(const EQApplicationPacket* app, bool ack_req = true, CLIENT_CONN_STATUS = CLIENT_CONNECTINGALL, eqFilterType filter=FilterNone);
 	void FastQueuePacket(EQApplicationPacket** app, bool ack_req = true, CLIENT_CONN_STATUS = CLIENT_CONNECTINGALL);
 	void ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_skill, const char* orig_message, const char* targetname = nullptr, bool is_silent = false);
-	void ChannelMessageSend(const char* from, const char* to, uint8 chan_num, uint8 language, uint8 lang_skill, const char* message, ...);
+	void ChannelMessageSend(const char* from, const char* to, uint8 channel_id, uint8 language_id, uint8 language_skill, const char* message, ...);
 	void Message(uint32 type, const char* message, ...);
 	void FilteredMessage(Mob *sender, uint32 type, eqFilterType filter, const char* message, ...);
 	void VoiceMacroReceived(uint32 Type, char *Target, uint32 MacroNumber);
@@ -379,9 +386,10 @@ public:
 	inline ExtendedProfile_Struct& GetEPP() { return m_epp; }
 	inline EQ::InventoryProfile& GetInv() { return m_inv; }
 	inline const EQ::InventoryProfile& GetInv() const { return m_inv; }
-	inline PetInfo* GetPetInfo(uint16 pet) { return (pet==1)?&m_suspendedminion:&m_petinfo; }
+	inline PetInfo* GetPetInfo(int pet_info_type) { return pet_info_type == PetInfoType::Suspended ? &m_suspendedminion : &m_petinfo; }
 	inline InspectMessage_Struct& GetInspectMessage() { return m_inspect_message; }
 	inline const InspectMessage_Struct& GetInspectMessage() const { return m_inspect_message; }
+	void ReloadExpansionProfileSetting();
 
 	void SetPetCommandState(int button, int state);
 
@@ -448,7 +456,7 @@ public:
 	void SendSingleTraderItem(uint32 char_id, int uniqueid);
 	void BulkSendMerchantInventory(int merchant_id, int npcid);
 
-	inline uint8 GetLanguageSkill(uint16 n) const { return m_pp.languages[n]; }
+	inline uint8 GetLanguageSkill(uint8 language_id) const { return m_pp.languages[language_id]; }
 
 	void SendPickPocketResponse(Mob *from, uint32 amt, int type, const EQ::ItemData* item = nullptr);
 
@@ -597,21 +605,24 @@ public:
 
 	inline uint32 GetEXP() const { return m_pp.exp; }
 
-	inline double GetAAEXPModifier(uint32 zone_id, int16 instance_version = -1) const { return database.GetAAEXPModifier(CharacterID(), zone_id, instance_version); };
-	inline double GetEXPModifier(uint32 zone_id, int16 instance_version = -1) const { return database.GetEXPModifier(CharacterID(), zone_id, instance_version); };
-	inline void SetAAEXPModifier(uint32 zone_id, double aa_modifier, int16 instance_version = -1) { database.SetAAEXPModifier(CharacterID(), zone_id, aa_modifier, instance_version); };
-	inline void SetEXPModifier(uint32 zone_id, double exp_modifier, int16 instance_version = -1) { database.SetEXPModifier(CharacterID(), zone_id, exp_modifier, instance_version); };
+	float GetAAEXPModifier(uint32 zone_id, int16 instance_version = -1);
+	float GetEXPModifier(uint32 zone_id, int16 instance_version = -1);
+	void SetAAEXPModifier(uint32 zone_id, float aa_modifier, int16 instance_version = -1);
+	void SetEXPModifier(uint32 zone_id, float exp_modifier, int16 instance_version = -1);
 
 	bool UpdateLDoNPoints(uint32 theme_id, int points);
 	void SetLDoNPoints(uint32 theme_id, uint32 points);
 	void SetPVPPoints(uint32 Points) { m_pp.PVPCurrentPoints = Points; }
 	uint32 GetPVPPoints() { return m_pp.PVPCurrentPoints; }
 	void AddPVPPoints(uint32 Points);
+	void AddEbonCrystals(uint32 amount, bool is_reclaim = false);
+	void AddRadiantCrystals(uint32 amount, bool is_reclaim = false);
+	void RemoveEbonCrystals(uint32 amount, bool is_reclaim = false);
+	void RemoveRadiantCrystals(uint32 amount, bool is_reclaim = false);
 	uint32 GetRadiantCrystals() { return m_pp.currentRadCrystals; }
 	void SetRadiantCrystals(uint32 value);
 	uint32 GetEbonCrystals() { return m_pp.currentEbonCrystals; }
 	void SetEbonCrystals(uint32 value);
-	void AddCrystals(uint32 Radiant, uint32 Ebon);
 	void SendCrystalCounts();
 
 	uint64 GetExperienceForKill(Mob *against);
@@ -688,7 +699,7 @@ public:
 	void SendFactionMessage(int32 tmpvalue, int32 faction_id, int32 faction_before_hit, int32 totalvalue, uint8 temp,  int32 this_faction_min, int32 this_faction_max);
 
 	void UpdatePersonalFaction(int32 char_id, int32 npc_value, int32 faction_id, int32 *current_value, int32 temp, int32 this_faction_min, int32 this_faction_max);
-	void SetFactionLevel(uint32 char_id, uint32 npc_id, uint8 char_class, uint8 char_race, uint8 char_deity, bool quest = false);
+	void SetFactionLevel(uint32 char_id, uint32 npc_faction_id, uint8 char_class, uint8 char_race, uint8 char_deity, bool quest = false);
 	void SetFactionLevel2(uint32 char_id, int32 faction_id, uint8 char_class, uint8 char_race, uint8 char_deity, int32 value, uint8 temp);
 	int32 GetRawItemAC();
 
@@ -760,7 +771,7 @@ public:
 	void SetSkillPoints(int inp) { m_pp.points = inp;}
 
 	void IncreaseSkill(int skill_id, int value = 1) { if (skill_id <= EQ::skills::HIGHEST_SKILL) { m_pp.skills[skill_id] += value; } }
-	void IncreaseLanguageSkill(int skill_id, int value = 1);
+	void IncreaseLanguageSkill(uint8 language_id, uint8 increase = 1);
 	virtual uint16 GetSkill(EQ::skills::SkillType skill_id) const { if (skill_id <= EQ::skills::HIGHEST_SKILL) { return(itembonuses.skillmod[skill_id] > 0 ? (itembonuses.skillmodmax[skill_id] > 0 ? std::min(m_pp.skills[skill_id] + itembonuses.skillmodmax[skill_id], m_pp.skills[skill_id] * (100 + itembonuses.skillmod[skill_id]) / 100) : m_pp.skills[skill_id] * (100 + itembonuses.skillmod[skill_id]) / 100) : m_pp.skills[skill_id]); } return 0; }
 	uint32 GetRawSkill(EQ::skills::SkillType skill_id) const { if (skill_id <= EQ::skills::HIGHEST_SKILL) { return(m_pp.skills[skill_id]); } return 0; }
 	bool HasSkill(EQ::skills::SkillType skill_id) const;
@@ -770,8 +781,8 @@ public:
 	void CheckSpecializeIncrease(uint16 spell_id);
 	void CheckSongSkillIncrease(uint16 spell_id);
 	bool CheckIncreaseSkill(EQ::skills::SkillType skillid, Mob *against_who, int chancemodi = 0);
-	void CheckLanguageSkillIncrease(uint8 langid, uint8 TeacherSkill);
-	void SetLanguageSkill(int langid, int value);
+	void CheckLanguageSkillIncrease(uint8 language_id, uint8 teacher_skill);
+	void SetLanguageSkill(uint8 language_id, uint8 language_skill);
 	void SetHoTT(uint32 mobid);
 	void ShowSkillsWindow();
 
@@ -901,6 +912,10 @@ public:
 	int GetAAPoints() { return m_pp.aapoints; }
 	int GetSpentAA() { return m_pp.aapoints_spent; }
 	uint32 GetRequiredAAExperience();
+	void AutoGrantAAPoints();
+	void GrantAllAAPoints(uint8 unlock_level = 0);
+	bool HasAlreadyPurchasedRank(AA::Rank* rank);
+	void ListPurchasedAAs(Client *to, std::string search_criteria = std::string());
 
 	bool SendGMCommand(std::string message, bool ignore_status = false);
 
@@ -916,6 +931,7 @@ public:
 	void ApplySpell(
 		int spell_id,
 		int duration = 0,
+		int level = -1,
 		ApplySpellType apply_type = ApplySpellType::Solo,
 		bool allow_pets = false,
 		bool is_raid_group_only = true,
@@ -925,6 +941,7 @@ public:
 	void SetSpellDuration(
 		int spell_id,
 		int duration = 0,
+		int level = -1,
 		ApplySpellType apply_type = ApplySpellType::Solo,
 		bool allow_pets = false,
 		bool is_raid_group_only = true,
@@ -942,6 +959,9 @@ public:
 	void SetAATitle(std::string title);
 	void SetTitleSuffix(std::string suffix);
 	void MemorizeSpell(uint32 slot, uint32 spell_id, uint32 scribing, uint32 reduction = 0);
+
+	int GetAAEXPPercentage();
+	int GetEXPPercentage();
 
 	// Item methods
 	void UseAugmentContainer(int container_slot);
@@ -966,14 +986,16 @@ public:
 	bool SwapItem(MoveItem_Struct* move_in);
 	void SwapItemResync(MoveItem_Struct* move_slots);
 	void QSSwapItemAuditor(MoveItem_Struct* move_in, bool postaction_call = false);
-	void PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, ServerLootItem_Struct** bag_item_data = 0);
-	bool AutoPutLootInInventory(EQ::ItemInstance& inst, bool try_worn = false, bool try_cursor = true, ServerLootItem_Struct** bag_item_data = 0);
+	void PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, LootItem** bag_item_data = 0);
+	bool AutoPutLootInInventory(EQ::ItemInstance& inst, bool try_worn = false, bool try_cursor = true, LootItem** bag_item_data = 0);
 	bool SummonItem(uint32 item_id, int16 charges = -1, uint32 aug1 = 0, uint32 aug2 = 0, uint32 aug3 = 0, uint32 aug4 = 0, uint32 aug5 = 0, uint32 aug6 = 0, bool attuned = false, uint16 to_slot = EQ::invslot::slotCursor, uint32 ornament_icon = 0, uint32 ornament_idfile = 0, uint32 ornament_hero_model = 0);
-	void SummonBaggedItems(uint32 bag_item_id, const std::vector<ServerLootItem_Struct>& bag_items);
+	void SummonItemIntoInventory(uint32 item_id, int16 charges = -1, uint32 aug1 = 0, uint32 aug2 = 0, uint32 aug3 = 0, uint32 aug4 = 0, uint32 aug5 = 0, uint32 aug6 = 0, bool is_attuned = false);
+	void SummonBaggedItems(uint32 bag_item_id, const std::vector<LootItem>& bag_items);
 	void SetStats(uint8 type,int16 set_val);
 	void IncStats(uint8 type,int16 increase_val);
 	void DropItem(int16 slot_id, bool recurse = true);
 	void DropItemQS(EQ::ItemInstance* inst, bool pickup);
+	bool HasItemOnCorpse(uint32 item_id);
 
 	bool IsAugmentRestricted(uint8 item_type, uint32 augment_restriction);
 
@@ -1265,6 +1287,10 @@ public:
 		}
 		else { return 0; }
 	}
+	inline bool CompleteTask(uint32 task_id)
+	{
+		return task_state ? task_state->CompleteTask(this, task_id) : false;
+	}
 	inline void FailTask(int task_id) { if (task_state) { task_state->FailTask(this, task_id); }}
 	inline int TaskTimeLeft(int task_id) { return (task_state ? task_state->TaskTimeLeft(task_id) : 0); }
 	inline int EnabledTaskCount(int task_set_id)
@@ -1431,9 +1457,15 @@ public:
 	void DepopAllCorpses();
 	void DepopPlayerCorpse(uint32 dbid);
 	void BuryPlayerCorpses();
-	uint32 GetCorpseCount() { return database.GetCharacterCorpseCount(CharacterID()); }
+	int64 GetCorpseCount() { return database.GetCharacterCorpseCount(CharacterID()); }
 	uint32 GetCorpseID(int corpse) { return database.GetCharacterCorpseID(CharacterID(), corpse); }
-	uint32 GetCorpseItemAt(int corpse_id, int slot_id) { return database.GetCharacterCorpseItemAt(corpse_id, slot_id); }
+	uint32 GetCorpseItemAt(int corpse_id, int slot_id) {
+		if (!corpse_id) {
+			return 0;
+		}
+		return database.GetCharacterCorpseItemAt(corpse_id, slot_id);
+	}
+
 	void SuspendMinion(int value);
 	void Doppelganger(uint16 spell_id, Mob *target, const char *name_override, int pet_count, int pet_duration);
 	void NotifyNewTitlesAvailable();
@@ -1479,7 +1511,7 @@ public:
 	void ConsentCorpses(std::string consent_name, bool deny = false);
 	void SendAltCurrencies();
 	void SetAlternateCurrencyValue(uint32 currency_id, uint32 new_amount);
-	int AddAlternateCurrencyValue(uint32 currency_id, int32 amount, int8 method = 0);
+	int AddAlternateCurrencyValue(uint32 currency_id, int amount, bool is_scripted = false);
 	void SendAlternateCurrencyValues();
 	void SendAlternateCurrencyValue(uint32 currency_id, bool send_if_null = true);
 	uint32 GetAlternateCurrencyValue(uint32 currency_id) const;
@@ -1509,6 +1541,7 @@ public:
 	void JoinGroupXTargets(Group *g);
 	void LeaveGroupXTargets(Group *g);
 	void LeaveRaidXTargets(Raid *r);
+	void ClearXTargets();
 	bool GroupFollow(Client* inviter);
 	inline bool  GetRunMode() const { return runmode; }
 
@@ -1533,14 +1566,14 @@ public:
 	bool CheckCanUnsuspendMerc();
 	bool DismissMerc(uint32 MercID);
 	bool MercOnlyOrNoGroup();
-	inline uint32 GetMercID() const { return mercid; }
+	inline uint32 GetMercenaryID() const { return mercid; }
 	inline uint8 GetMercSlot() const { return mercSlot; }
 	void SetMercID( uint32 newmercid) { mercid = newmercid; }
 	void SetMercSlot( uint8 newmercslot) { mercSlot = newmercslot; }
 	Merc* GetMerc();
 	MercInfo& GetMercInfo(uint8 slot) { return m_mercinfo[slot]; }
 	MercInfo& GetMercInfo() { return m_mercinfo[mercSlot]; }
-	uint8 GetNumMercs();
+	uint8 GetNumberOfMercenaries();
 	void SetMerc(Merc* newmerc);
 	void SendMercResponsePackets(uint32 ResponseType);
 	void SendMercMerchantResponsePacket(int32 response_type);
@@ -1569,8 +1602,6 @@ public:
 	void DuplicateLoreMessage(uint32 ItemID);
 	void GarbleMessage(char *, uint8);
 
-	void TickItemCheck();
-	void TryItemTick(int slot);
 	void ItemTimerCheck();
 	void TryItemTimer(int slot);
 	void SendItemScale(EQ::ItemInstance *inst);
@@ -1587,7 +1618,7 @@ public:
 	void SetAccountFlag(const std::string& flag, const std::string& value);
 	std::string GetAccountFlag(const std::string& flag);
 	std::vector<std::string> GetAccountFlags();
-	void SetGMStatus(int16 new_status);
+	void SetGMStatus(int new_status);
 	void Consume(const EQ::ItemData *item, uint8 type, int16 slot, bool auto_consume);
 	void PlayMP3(const char* fname);
 	void ExpeditionSay(const char *str, int ExpID);
@@ -1658,7 +1689,7 @@ protected:
 	bool client_data_loaded;
 
 
-	void FinishAlternateAdvancementPurchase(AA::Rank *rank, bool ignore_cost);
+	void FinishAlternateAdvancementPurchase(AA::Rank *rank, bool ignore_cost, bool send_message_and_save);
 
 	Mob* bind_sight_target;
 
@@ -1800,9 +1831,12 @@ private:
 	bool dev_tools_enabled;
 
 	uint16 m_door_tool_entity_id;
+	uint16 m_object_tool_entity_id;
 public:
 	uint16 GetDoorToolEntityId() const;
 	void SetDoorToolEntityId(uint16 door_tool_entity_id);
+	uint16 GetObjectToolEntityId() const;
+	void SetObjectToolEntityId(uint16 object_tool_entity_id);
 private:
 
 	int32 max_end;
@@ -1931,6 +1965,8 @@ private:
 
 	bool m_exp_enabled;
 
+	std::vector<EXPModifier> m_exp_modifiers;
+
 	//Anti Spam Stuff
 	Timer *KarmaUpdateTimer;
 	uint32 TotalKarma;
@@ -1984,7 +2020,6 @@ private:
 
 	AggroMeter m_aggrometer;
 
-	Timer ItemTickTimer;
 	Timer ItemQuestTimer;
 	std::map<std::string,std::string> accountflags;
 
@@ -2028,14 +2063,14 @@ public:
 	bool GetBotPrecombat() { return m_bot_precombat; }
 	void SetBotPrecombat(bool flag = true) { m_bot_precombat = flag; }
 
-	int GetBotRequiredLevel(uint8 class_id = NO_CLASS);
-	uint32 GetBotCreationLimit(uint8 class_id = NO_CLASS);
-	int GetBotSpawnLimit(uint8 class_id = NO_CLASS);
-	void SetBotCreationLimit(uint32 new_creation_limit, uint8 class_id = NO_CLASS);
-	void SetBotRequiredLevel(int new_required_level, uint8 class_id = NO_CLASS);
-	void SetBotSpawnLimit(int new_spawn_limit, uint8 class_id = NO_CLASS);
+	int GetBotRequiredLevel(uint8 class_id = Class::None);
+	uint32 GetBotCreationLimit(uint8 class_id = Class::None);
+	int GetBotSpawnLimit(uint8 class_id = Class::None);
+	void SetBotCreationLimit(uint32 new_creation_limit, uint8 class_id = Class::None);
+	void SetBotRequiredLevel(int new_required_level, uint8 class_id = Class::None);
+	void SetBotSpawnLimit(int new_spawn_limit, uint8 class_id = Class::None);
 
-	void CampAllBots(uint8 class_id = NO_CLASS);
+	void CampAllBots(uint8 class_id = Class::None);
 	void SpawnRaidBotsOnConnect(Raid* raid);
 
 private:

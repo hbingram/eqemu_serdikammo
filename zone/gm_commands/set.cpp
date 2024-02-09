@@ -33,6 +33,7 @@
 #include "set/loginserver_info.cpp"
 #include "set/mana.cpp"
 #include "set/mana_full.cpp"
+#include "set/motd.cpp"
 #include "set/name.cpp"
 #include "set/ooc_mute.cpp"
 #include "set/password.cpp"
@@ -98,6 +99,7 @@ void command_set(Client *c, const Seperator *sep)
 		Cmd{.cmd = "loginserver_info", .u = "loginserver_info [Email] [Password]", .fn = SetLoginserverInfo, .a = {"#setlsinfo"}},
 		Cmd{.cmd = "mana", .u = "mana [Amount]", .fn = SetMana, .a = {"#setmana"}},
 		Cmd{.cmd = "mana_full", .u = "mana_full", .fn = SetManaFull, .a = {"#mana"}},
+		Cmd{.cmd = "motd", .u = "motd", .fn = SetMOTD, .a = {"#motd"}},
 		Cmd{.cmd = "name", .u = "name", .fn = SetName, .a = {"#name"}},
 		Cmd{.cmd = "ooc_mute", .u = "ooc_mute", .fn = SetOOCMute, .a = {"#oocmute"}},
 		Cmd{.cmd = "password", .u = "password [Account Name] [Password] (account table password)", .fn = SetPassword, .a = {"#setpass"}},
@@ -134,7 +136,9 @@ void command_set(Client *c, const Seperator *sep)
 
 				// skip the first arg
 				for (auto i = 1; i <= arguments; i++) {
-					args.emplace_back(sep->arg[i]);
+					if (sep->arg[i]) {
+						args.emplace_back(sep->arg[i]);
+					}
 				}
 
 				// build the rewrite string

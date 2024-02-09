@@ -55,6 +55,22 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 #endif
 	auto* zc = (ZoneChange_Struct*)app->pBuffer;
 
+	LogZoning(
+		"Client [{}] char_name [{}] zoning to [{}] ({}) instance_id [{}] x [{}] y [{}] z [{}] zone_reason [{}] success [{}] zone_mode [{}] ({})",
+		GetCleanName(),
+		zc->char_name,
+		ZoneName(zc->zoneID) ? ZoneName(zc->zoneID) : "Unknown",
+		zc->zoneID,
+		zc->instanceID,
+		zc->x,
+		zc->y,
+		zc->z,
+		zc->zone_reason,
+		zc->success,
+		GetZoneModeString(zone_mode),
+		int(zone_mode)
+	);
+
 	uint16 target_zone_id = 0;
 	auto target_instance_id = zc->instanceID;
 	ZonePoint* zone_point = nullptr;
@@ -72,6 +88,7 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 				target_zone_id = zone->GetZoneID();
 				break;
 			case GMSummon:
+			case GMHiddenSummon:
 			case ZoneSolicited: //we told the client to zone somewhere, so we know where they are going.
 				target_zone_id = zonesummon_id;
 				break;
@@ -132,6 +149,14 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 	}
 
 	if (target_instance_id) {
+		LogZoning(
+			"Client [{}] attempting zone to instance_id [{}] zone [{}] ({})",
+			GetCleanName(),
+			target_instance_id,
+			ZoneName(target_zone_id) ? ZoneName(target_zone_id) : "Unknown",
+			target_zone_id
+		);
+
 		//make sure we are in it and it's unexpired.
 		if (!database.VerifyInstanceAlive(target_instance_id, CharacterID())) {
 			Message(
@@ -141,6 +166,7 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 					target_instance_id
 				).c_str()
 			);
+			LogZoning("Client [{}] Invalid zone instance request to zone id [{}]", GetCleanName(), target_zone_id);
 			SendZoneCancel(zc);
 			return;
 		}
@@ -154,6 +180,7 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 					target_zone_id
 				).c_str()
 			);
+			LogZoning("Client [{}] Invalid zone instance request to zone id [{}]", GetCleanName(), target_zone_id);
 			SendZoneCancel(zc);
 			return;
 		}
@@ -185,7 +212,7 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 	int16 min_status = AccountStatus::Player;
 	uint8 min_level  = 0;
 
-	LogInfo("Loaded zone flag [{}]", zone_data->flag_needed);
+	LogZoning("Loaded zone flag [{}]", zone_data->flag_needed);
 
 	safe_x       = zone_data->safe_x;
 	safe_y       = zone_data->safe_y;
@@ -252,6 +279,7 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 			target_heading = safe_heading;
 			break;
 		case GMSummon:
+		case GMHiddenSummon:
 			target_x = m_ZoneSummonLocation.x;
 			target_y = m_ZoneSummonLocation.y;
 			target_z = m_ZoneSummonLocation.z;
@@ -317,9 +345,7 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 
 	//TODO: ADVENTURE ENTRANCE CHECK
 
-	/**
-	 * Expansion check
-	 */
+	// Expansion checks and routing
 	if (content_service.GetCurrentExpansion() >= Expansion::Classic && !GetGM()) {
 		bool meets_zone_expansion_check = false;
 
@@ -328,7 +354,7 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 			meets_zone_expansion_check = true;
 		}
 
-		LogInfo(
+		LogZoning(
 			"Checking zone request [{}] for expansion [{}] ({}) success [{}]",
 			target_zone_name,
 			(content_service.GetCurrentExpansion()),
@@ -343,6 +369,7 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 
 	if (content_service.GetCurrentExpansion() >= Expansion::Classic && GetGM()) {
 		LogInfo("[{}] Bypassing Expansion zone checks because GM status is set", GetCleanName());
+		Message(Chat::Yellow, "Bypassing Expansion zone checks because GM status is set");
 	}
 
 	if (zoning_message == ZoningMessage::ZoneSuccess) {
@@ -360,11 +387,40 @@ void Client::SendZoneCancel(ZoneChange_Struct *zc) {
 	EQApplicationPacket *outapp = nullptr;
 	outapp = new EQApplicationPacket(OP_ZoneChange, sizeof(ZoneChange_Struct));
 	ZoneChange_Struct *zc2 = (ZoneChange_Struct*)outapp->pBuffer;
+
+	LogZoning(
+		"(zs) Client [{}] char_name [{}] zoning to [{}] ({}) cancelled instance_id [{}] x [{}] y [{}] z [{}] zone_reason [{}] success [{}]",
+		GetCleanName(),
+		zc->char_name,
+		ZoneName(zc2->zoneID) ? ZoneName(zc2->zoneID) : "Unknown",
+		zc->zoneID,
+		zc->instanceID,
+		zc->x,
+		zc->y,
+		zc->z,
+		zc->zone_reason,
+		zc->success
+	);
+
 	strcpy(zc2->char_name, zc->char_name);
 	zc2->zoneID = zone->GetZoneID();
 	zc2->success = 1;
 	outapp->priority = 6;
 	FastQueuePacket(&outapp);
+
+	LogZoning(
+		"(zc2) Client [{}] char_name [{}] zoning to [{}] ({}) cancelled instance_id [{}] x [{}] y [{}] z [{}] zone_reason [{}] success [{}]",
+		GetCleanName(),
+		zc2->char_name,
+		ZoneName(zc2->zoneID) ? ZoneName(zc2->zoneID) : "Unknown",
+		zc2->zoneID,
+		zc2->instanceID,
+		zc2->x,
+		zc2->y,
+		zc2->z,
+		zc2->zone_reason,
+		zc2->success
+	);
 
 	//reset to unsolicited.
 	zone_mode = ZoneUnsolicited;
@@ -386,6 +442,20 @@ void Client::SendZoneError(ZoneChange_Struct *zc, int8 err)
 	zc2->success = err;
 	outapp->priority = 6;
 	FastQueuePacket(&outapp);
+
+	LogZoning(
+		"Client [{}] char_name [{}] zoning to [{}] ({}) (error) instance_id [{}] x [{}] y [{}] z [{}] zone_reason [{}] success [{}]",
+		GetCleanName(),
+		zc2->char_name,
+		ZoneName(zc2->zoneID) ? ZoneName(zc2->zoneID) : "Unknown",
+		zc2->zoneID,
+		zc2->instanceID,
+		zc2->x,
+		zc2->y,
+		zc2->z,
+		zc2->zone_reason,
+		zc2->success
+	);
 
 	//reset to unsolicited.
 	zone_mode = ZoneUnsolicited;
@@ -423,15 +493,18 @@ void Client::DoZoneSuccess(ZoneChange_Struct *zc, uint16 zone_id, uint32 instanc
 		}
 	}
 
-	LogInfo(
-		"Zoning [{}] to: [{}] ([{}]) - ([{}]) x [{}] y [{}] z [{}]",
-		m_pp.name,
-		ZoneName(zone_id),
+	LogZoning(
+		"Client [{}] char_name [{}] zoning to [{}] ({}) instance_id [{}] x [{}] y [{}] z [{}] zone_reason [{}] success [{}]",
+		GetCleanName(),
+		zc->char_name,
+		ZoneName(zone_id) ? ZoneName(zone_id) : "Unknown",
 		zone_id,
 		instance_id,
 		dest_x,
 		dest_y,
-		dest_z
+		dest_z,
+		zc->zone_reason,
+		zc->success
 	);
 
 	//set the player's coordinates in the new zone so they have them
@@ -506,32 +579,41 @@ void Client::MovePC(uint32 zoneID, uint32 instanceID, float x, float y, float z,
 }
 
 void Client::MoveZone(const char *zone_short_name, const glm::vec4 &location) {
-	ProcessMovePC(ZoneID(zone_short_name), 0, location.x, location.y, location.z, location.w, 3, ZoneToSafeCoords);
+	const bool use_coordinates = (
+		location.x != 0.0f ||
+		location.y != 0.0f ||
+		location.z != 0.0f ||
+		location.w != 0.0f
+	);
+
+	const ZoneMode zone_type = use_coordinates ? ZoneSolicited : ZoneToSafeCoords;
+
+	ProcessMovePC(ZoneID(zone_short_name), 0, location.x, location.y, location.z, location.w, 3, zone_type);
 }
 
 void Client::MoveZoneGroup(const char *zone_short_name, const glm::vec4 &location) {
-	if (!GetGroup()) {
+	Group* g = GetGroup();
+	if (!g) {
 		MoveZone(zone_short_name, location);
 	} else {
-		auto client_group = GetGroup();
-		for (int member_index = 0; member_index < MAX_GROUP_MEMBERS; member_index++) {
-			if (client_group->members[member_index] && client_group->members[member_index]->IsClient()) {
-				auto group_member = client_group->members[member_index]->CastToClient();
-				group_member->MoveZone(zone_short_name, location);
+		for (const auto& gm : g->members) {
+			if (gm && gm->IsClient()) {
+				Client* c = gm->CastToClient();
+				c->MoveZone(zone_short_name, location);
 			}
 		}
 	}
 }
 
 void Client::MoveZoneRaid(const char *zone_short_name, const glm::vec4 &location) {
-	if (!GetRaid()) {
+	Raid* r = GetRaid();
+	if (!r) {
 		MoveZone(zone_short_name, location);
 	} else {
-		auto client_raid = GetRaid();
-		for (int member_index = 0; member_index < MAX_RAID_MEMBERS; member_index++) {
-			if (client_raid->members[member_index].member && client_raid->members[member_index].member->IsClient()) {
-				auto raid_member = client_raid->members[member_index].member->CastToClient();
-				raid_member->MoveZone(zone_short_name, location);
+		for (const auto& rm : r->members) {
+			if (rm.member && rm.member->IsClient()) {
+				Client* c = rm.member->CastToClient();
+				c->MoveZone(zone_short_name, location);
 			}
 		}
 	}
@@ -542,32 +624,41 @@ void Client::MoveZoneInstance(uint16 instance_id, const glm::vec4 &location) {
 		database.AddClientToInstance(instance_id, CharacterID());
 	}
 
-	ProcessMovePC(database.GetInstanceZoneID(instance_id), instance_id, location.x, location.y, location.z, location.w, 3, ZoneToSafeCoords);
+	const bool use_coordinates = (
+		location.x != 0.0f ||
+		location.y != 0.0f ||
+		location.z != 0.0f ||
+		location.w != 0.0f
+	);
+
+	const ZoneMode zone_type = use_coordinates ? ZoneSolicited : ZoneToSafeCoords;
+
+	ProcessMovePC(database.GetInstanceZoneID(instance_id), instance_id, location.x, location.y, location.z, location.w, 3, zone_type);
 }
 
 void Client::MoveZoneInstanceGroup(uint16 instance_id, const glm::vec4 &location) {
-	if (!GetGroup()) {
+	Group* g = GetGroup();
+	if (!g) {
 		MoveZoneInstance(instance_id, location);
 	} else {
-		auto client_group = GetGroup();
-		for (int member_index = 0; member_index < MAX_GROUP_MEMBERS; member_index++) {
-			if (client_group->members[member_index] && client_group->members[member_index]->IsClient()) {
-				auto group_member = client_group->members[member_index]->CastToClient();
-				group_member->MoveZoneInstance(instance_id, location);
+		for (const auto& gm : g->members) {
+			if (gm && gm->IsClient()) {
+				Client* c = gm->CastToClient();
+				c->MoveZoneInstance(instance_id, location);
 			}
 		}
 	}
 }
 
 void Client::MoveZoneInstanceRaid(uint16 instance_id, const glm::vec4 &location) {
-	if (!GetRaid()) {
+	Raid* r = GetRaid();
+	if (!r) {
 		MoveZoneInstance(instance_id, location);
 	} else {
-		auto client_raid = GetRaid();
-		for (int member_index = 0; member_index < MAX_RAID_MEMBERS; member_index++) {
-			if (client_raid->members[member_index].member && client_raid->members[member_index].member->IsClient()) {
-				auto raid_member = client_raid->members[member_index].member->CastToClient();
-				raid_member->MoveZoneInstance(instance_id, location);
+		for (const auto& rm : r->members) {
+			if (rm.member && rm.member->IsClient()) {
+				Client* c = rm.member->CastToClient();
+				c->MoveZoneInstance(instance_id, location);
 			}
 		}
 	}
@@ -610,6 +701,9 @@ void Client::ProcessMovePC(uint32 zoneID, uint32 instance_id, float x, float y, 
 			Message(Chat::Yellow, "You have been summoned by a GM!");
 			ZonePC(zoneID, instance_id, x, y, z, heading, ignorerestrictions, zm);
 			break;
+		case GMHiddenSummon:
+			ZonePC(zoneID, instance_id, x, y, z, heading, ignorerestrictions, zm);
+			break;
 		case ZoneToBindPoint:
 			ZonePC(zoneID, instance_id, x, y, z, heading, ignorerestrictions, zm);
 			break;
@@ -617,7 +711,7 @@ void Client::ProcessMovePC(uint32 zoneID, uint32 instance_id, float x, float y, 
 			ZonePC(zoneID, instance_id, x, y, z, heading, ignorerestrictions, zm);
 			break;
 		case SummonPC:
-			Message(Chat::Yellow, "You have been summoned!");
+			MessageString(Chat::Yellow, PLAYER_SUMMONED);
 			ZonePC(zoneID, instance_id, x, y, z, heading, ignorerestrictions, zm);
 			break;
 		case Rewind:
@@ -674,6 +768,7 @@ void Client::ZonePC(uint32 zoneID, uint32 instance_id, float x, float y, float z
 			heading = zone_safe_point.w;
 			break;
 		case GMSummon:
+		case GMHiddenSummon:
 			m_Position = glm::vec4(x, y, z, heading);
 			m_ZoneSummonLocation = m_Position;
 			zonesummon_id = zoneID;
@@ -724,7 +819,7 @@ void Client::ZonePC(uint32 zoneID, uint32 instance_id, float x, float y, float z
 			Entity* entity = entity_list.GetID(entity_id_being_looted);
 			if (entity == 0)
 			{
-				Message(Chat::Red, "Error: OP_EndLootRequest: Corpse not found (ent = 0)");
+				LogError("OP_EndLootRequest: Corpse with id of {} not found for {}.", entity_id_being_looted, GetCleanName());
 				if (ClientVersion() >= EQ::versions::ClientVersion::SoD)
 					Corpse::SendEndLootErrorPacket(this);
 				else
@@ -732,7 +827,7 @@ void Client::ZonePC(uint32 zoneID, uint32 instance_id, float x, float y, float z
 			}
 			else if (!entity->IsCorpse())
 			{
-				Message(Chat::Red, "Error: OP_EndLootRequest: Corpse not found (!entity->IsCorpse())");
+				LogError("OP_EndLootRequest: Entity with id of {} was not corpse for {}.", entity_id_being_looted, GetCleanName());
 				Corpse::SendLootReqErrorPacket(this);
 			}
 			else
@@ -1256,7 +1351,7 @@ bool Client::CanEnterZone(const std::string& zone_short_name, int16 instance_ver
 	}
 
 	if (!z->flag_needed.empty() && Strings::IsNumber(z->flag_needed) && Strings::ToBool(z->flag_needed)) {
-		if (Admin() < minStatusToIgnoreZoneFlags && !HasZoneFlag(z->zoneidnumber)) {
+		if (!GetGM() && !HasZoneFlag(z->zoneidnumber)) {
 			LogInfo(
 				"Character [{}] does not have the flag to be in this zone [{}]!",
 				GetCleanName(),

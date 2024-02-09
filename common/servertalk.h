@@ -10,6 +10,7 @@
 #include <cereal/types/chrono.hpp>
 #include <cereal/types/string.hpp>
 #include <cereal/types/vector.hpp>
+#include <glm/vec4.hpp>
 
 #define SERVER_TIMEOUT	45000	// how often keepalive gets sent
 #define INTERSERVER_TIMER					10000
@@ -83,6 +84,7 @@
 #define ServerOP_UpdateSpawn		0x003f
 #define ServerOP_SpawnStatusChange	0x0040
 #define ServerOP_DropClient         0x0041	// DropClient
+#define ServerOP_IsOwnerOnline		0x0042
 #define ServerOP_DepopAllPlayersCorpses	0x0060
 #define ServerOP_QGlobalUpdate		0x0061
 #define ServerOP_QGlobalDelete		0x0062
@@ -250,6 +252,9 @@
 #define ServerOP_ReloadDzTemplates 0x4123
 #define ServerOP_ReloadZoneData 0x4124
 #define ServerOP_ReloadDataBucketsCache 0x4125
+#define ServerOP_ReloadFactions 0x4126
+#define ServerOP_ReloadLoot 0x4127
+#define ServerOP_ReloadBaseData 0x4128
 
 #define ServerOP_CZDialogueWindow 0x4500
 #define ServerOP_CZLDoNUpdate 0x4501
@@ -460,12 +465,12 @@ struct SPackSendQueue {
 	uchar buffer[0];
 };
 
-struct ServerZoneStateChange_struct {
-	uint32 ZoneServerID;
-	char adminname[64];
-	uint32 zoneid;
-	uint16 instanceid;
-	bool makestatic;
+struct ServerZoneStateChange_Struct {
+	uint32 zone_server_id;
+	uint32 zone_id;
+	uint16 instance_id;
+	bool   is_static;
+	char   admin_name[64];
 };
 
 struct ServerZoneIncomingClient_Struct {
@@ -1076,7 +1081,7 @@ struct ServerRaidMessage_Struct {
 
 struct ServerRaidMOTD_Struct {
 	uint32 rid;
-	char motd[0];
+	char motd[1024];
 };
 
 struct ServerRaidNote_Struct {
@@ -1141,10 +1146,10 @@ struct ServerInstanceUpdateTime_Struct
 	uint32 new_duration;
 };
 
-struct ServerSpawnStatusChange_Struct
-{
+struct ServerSpawnStatusChange_Struct {
 	uint32 id;
-	bool new_status;
+	bool   new_status;
+	uint32 instance_id;
 };
 
 struct ServerQGlobalUpdate_Struct
@@ -1486,95 +1491,96 @@ struct CZClientMessageString_Struct {
 
 struct CZDialogueWindow_Struct {
 	uint8 update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
-	int update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
-	char message[4096];
-	char client_name[64]; // Only used by Character Name Type, else empty
+	int   update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
+	char  message[4096];
+	char  client_name[64]; // Only used by Character Name Type, else empty
 };
 
 struct CZLDoNUpdate_Struct {
-	uint8 update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
-	uint8 update_subtype; // 0 - Loss, 1 - Points, 2 - Win
-	int update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
+	uint8  update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
+	uint8  update_subtype; // 0 - Loss, 1 - Points, 2 - Win
+	int    update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
 	uint32 theme_id;
-	int points; // Only used in Points Subtype, else 1
-	char client_name[64]; // Only used by Character Name Type, else empty
+	int    points; // Only used in Points Subtype, else 1
+	char   client_name[64]; // Only used by Character Name Type, else empty
 };
 
 struct CZMarquee_Struct {
-	uint8 update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
-	int update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
+	uint8  update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
+	int    update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
 	uint32 type;
 	uint32 priority;
 	uint32 fade_in;
 	uint32 fade_out;
 	uint32 duration;
-	char message[512];
-	char client_name[64]; // Only used by Character Name Type, else empty
+	char   message[512];
+	char   client_name[64]; // Only used by Character Name Type, else empty
 };
 
 struct CZMessage_Struct {
-	uint8 update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
-	int update_identifier; // Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
+	uint8  update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
+	int    update_identifier; // Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
 	uint32 type;
-	char message[512];
-	char client_name[64]; // Only used by Character Name Type, else empty
+	char   message[512];
+	char   client_name[64]; // Only used by Character Name Type, else empty
 };
 
 struct CZMove_Struct {
-	uint8 update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
-	uint8 update_subtype; // 0 - Move Zone, 1 - Move Zone Instance
-	int update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
-	uint16 instance_id; // Only used by Move Zone Instance, else 0
-	char zone_short_name[32]; // Only by with Move Zone, else empty
-	char client_name[64]; // Only used by Character Name Type, else empty
+	std::string client_name       = std::string(); // Only used by Character Name Type, else empty
+	glm::vec4   coordinates       = glm::vec4(0.f); // XYZ or XYZH, heading is optional, defaults to 0.
+	uint16      instance_id       = 0; // Only used by Move Zone Instance, else 0
+	uint32      update_identifier = 0; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
+	uint8       update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
+	uint8       update_subtype; // 0 - Move Zone, 1 - Move Zone Instance
+	std::string zone_short_name   = std::string(); // Only used by Move Zone, else empty
 };
 
 struct CZSetEntityVariable_Struct {
 	uint8 update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name, 6 - NPC
-	int update_identifier; // Group ID, Raid ID, Guild ID, Expedition ID, or NPC ID based on update type, 0 for Character Name
-	char variable_name[256];
-	char variable_value[256];
-	char client_name[64]; // Only used by Character Type, else empty
+	int   update_identifier; // Group ID, Raid ID, Guild ID, Expedition ID, or NPC ID based on update type, 0 for Character Name
+	char  variable_name[256];
+	char  variable_value[256];
+	char  client_name[64]; // Only used by Character Type, else empty
 };
 
 struct CZSignal_Struct {
 	uint8 update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name, 6 - NPC
-	int update_identifier; // Character ID, Group ID, Raid ID, Guild ID, Expedition ID, or NPC ID based on update type, 0 for Character Name
-	int signal_id;
-	char client_name[64]; // Only used by Character Name Type, else empty
+	int   update_identifier; // Character ID, Group ID, Raid ID, Guild ID, Expedition ID, or NPC ID based on update type, 0 for Character Name
+	int   signal_id;
+	char  client_name[64]; // Only used by Character Name Type, else empty
 };
 
 struct CZSpell_Struct {
-	uint8 update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
-	uint8 update_subtype; // 0 - Cast Spell, 1 - Remove Spell
-	int update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
+	uint8  update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
+	uint8  update_subtype; // 0 - Cast Spell, 1 - Remove Spell
+	int    update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
 	uint32 spell_id;
-	char client_name[64]; // Only used by Character Name Type, else empty
+	char   client_name[64]; // Only used by Character Name Type, else empty
 };
 
 struct CZTaskUpdate_Struct {
-	uint8 update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
-	uint8 update_subtype; // 0 - Activity Reset, 1 - Activity Update, 2 - Assign Task, 3 - Disable Task, 4 - Enable Task, 5 - Fail Task, 6 - Remove Task
-	int update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
+	uint8  update_type; // 0 - Character, 1 - Group, 2 - Raid, 3 - Guild, 4 - Expedition, 5 - Character Name
+	uint8  update_subtype; // 0 - Activity Reset, 1 - Activity Update, 2 - Assign Task, 3 - Disable Task, 4 - Enable Task, 5 - Fail Task, 6 - Remove Task
+	int    update_identifier; // Character ID, Group ID, Raid ID, Guild ID, or Expedition ID based on update type, 0 for Character Name
 	uint32 task_identifier;
-	int task_subidentifier; // Activity ID for Activity Reset and Activity Update, NPC Entity ID for Assign Task, else -1
-	int update_count; // Only used by Activity Update, else 1
-	bool enforce_level_requirement; // Only used by Assign Task
-	char client_name[64]; // Only used by Character Name Type, else empty
+	int    task_subidentifier; // Activity ID for Activity Reset and Activity Update, NPC Entity ID for Assign Task, else -1
+	int    update_count; // Only used by Activity Update, else 1
+	bool   enforce_level_requirement; // Only used by Assign Task
+	char   client_name[64]; // Only used by Character Name Type, else empty
 };
 
 struct WWDialogueWindow_Struct {
-	char message[4096];
+	char  message[4096];
 	uint8 min_status;
 	uint8 max_status;
 };
 
 struct WWLDoNUpdate_Struct {
-	uint8 update_type; // 0 - Loss, 1 - Points, 2 - Win
+	uint8  update_type; // 0 - Loss, 1 - Points, 2 - Win
 	uint32 theme_id;
-	int points; // Only used in Points Subtype, else 1
-	uint8 min_status;
-	uint8 max_status;
+	int    points; // Only used in Points Subtype, else 1
+	uint8  min_status;
+	uint8  max_status;
 };
 
 struct WWMarquee_Struct {
@@ -1583,56 +1589,57 @@ struct WWMarquee_Struct {
 	uint32 fade_in;
 	uint32 fade_out;
 	uint32 duration;
-	char message[512];
-	uint8 min_status;
-	uint8 max_status;
+	char   message[512];
+	uint8  min_status;
+	uint8  max_status;
 };
 
 struct WWMessage_Struct {
 	uint32 type;
-	char message[512];
-	uint8 min_status;
-	uint8 max_status;
+	char   message[512];
+	uint8  min_status;
+	uint8  max_status;
 };
 
 struct WWMove_Struct {
-	uint8 update_type; // 0 - Move Zone, 1 - Move Zone Instance
-	char zone_short_name[32]; // Used with Move Zone
+	uint8  update_type; // 0 - Move Zone, 1 - Move Zone Instance
+	char   zone_short_name[32]; // Used with Move Zone
 	uint16 instance_id; // Used with Move Zone Instance
-	uint8 min_status;
-	uint8 max_status;
+	uint8  min_status;
+	uint8  max_status;
 };
+
 
 struct WWSetEntityVariable_Struct {
 	uint8 update_type; // 0 - Character, 1 - NPC
-	char variable_name[256];
-	char variable_value[256];
+	char  variable_name[256];
+	char  variable_value[256];
 	uint8 min_status;
 	uint8 max_status;
 };
 
 struct WWSignal_Struct {
 	uint8 update_type; // 0 - Character, 1 - NPC
-	int signal_id;
+	int   signal_id;
 	uint8 min_status;
 	uint8 max_status;
 };
 
 struct WWSpell_Struct {
-	uint8 update_type; // 0 - Cast Spell, 1 - Remove Spell
+	uint8  update_type; // 0 - Cast Spell, 1 - Remove Spell
 	uint32 spell_id;
-	uint8 min_status;
-	uint8 max_status;
+	uint8  min_status;
+	uint8  max_status;
 };
 
 struct WWTaskUpdate_Struct {
-	uint8 update_type; // 0 - Activity Reset, 1 - Activity Update, 2 - Assign Task, 3 - Disable Task, 4 - Enable Task, 5 - Fail Task, 6 - Remove Task
+	uint8  update_type; // 0 - Activity Reset, 1 - Activity Update, 2 - Assign Task, 3 - Disable Task, 4 - Enable Task, 5 - Fail Task, 6 - Remove Task
 	uint32 task_identifier;
-	int task_subidentifier; // Activity ID for Activity Reset and Activity Update, NPC Entity ID for Assign Task, else -1
-	int update_count; // Update Count for Activity Update, else 1
-	bool enforce_level_requirement; // Only used by Assign Task, else false
-	uint8 min_status;
-	uint8 max_status;
+	int    task_subidentifier; // Activity ID for Activity Reset and Activity Update, NPC Entity ID for Assign Task, else -1
+	int    update_count; // Update Count for Activity Update, else 1
+	bool   enforce_level_requirement; // Only used by Assign Task, else false
+	uint8  min_status;
+	uint8  max_status;
 };
 
 struct ReloadWorld_Struct {
@@ -1645,6 +1652,14 @@ struct HotReloadQuestsStruct {
 
 struct ServerRequestTellQueue_Struct {
 	char name[64];
+};
+
+struct ServerIsOwnerOnline_Struct {
+	char   name[64];
+	uint32 corpse_id;
+	uint16 zone_id;
+	uint8  online;
+	uint32 account_id;
 };
 
 struct UCSServerStatus_Struct {

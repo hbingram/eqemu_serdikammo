@@ -138,6 +138,9 @@ namespace Logs {
 		QuestErrors,
 		PlayerEvents,
 		DataBuckets,
+		Zoning,
+		EqTime,
+		Corpses,
 		MaxCategoryID /* Don't Remove this */
 	};
 
@@ -235,6 +238,9 @@ namespace Logs {
 		"QuestErrors",
 		"PlayerEvents",
 		"DataBuckets",
+		"Zoning",
+		"EqTime",
+		"Corpses",
 	};
 }
 

@@ -73,8 +73,6 @@ IT10714_ACTORDEF=Augmentation Sealer
 IT10725_ACTORDEF=Shuriken
 */
 
-#define OT_DROPPEDITEM EQ::item::BagTypeLargeBag
-
 // Icon values:
 //0x0453 a pie
 //0x0454 cookies?
@@ -89,18 +87,63 @@ IT10725_ACTORDEF=Shuriken
 //0x045D is a hammer
 //0x045E is a wierd rope shape
 
+enum ObjectTypes {
+	StaticLocked = 0,
+	Temporary = 1,
+	ToolBox = 10,
+	Research = 11,
+	Mortar = 12,
+	SelfDusting = 13,
+	Baking1 = 14,
+	Baking2 = 15,
+	Tailoring = 16,
+	Forge = 17,
+	Fletching = 18,
+	BrewBarrel = 19,
+	Jewelcrafting = 20,
+	PotteryWheel = 21,
+	PotteryKiln = 22,
+	WizardResearch = 24,
+	MagicianResearch = 25,
+	NecromancerResearch = 26,
+	EnchanterResearch = 27,
+	Invalid1 = 28,
+	Invalid2 = 29,
+	Experimental = 30,
+	HighElfForge = 31,
+	DarkElfForge = 32,
+	OgreForge = 33,
+	DwarfForge = 34,
+	GnomeForge = 35,
+	BarbarianForge = 36,
+	IksarForge = 38,
+	HumanForge = 39,
+	HumanForge2 = 40,
+	HalflingTailoring = 41,
+	EruditeTailoring = 42,
+	WoodElfTailoring = 43,
+	WoodElfFletching = 44,
+	IksarPotteryWheel = 45,
+	TrollForge = 47,
+	WoodElfForge = 48,
+	HalflingForge = 49,
+	EruditeForge = 50,
+	AugmentationPool = 53,
+	StaticUnlocked = 255
+};
+
 class Object: public Entity
 {
 public:
 	// Loading object from database
-	Object(uint32 id, uint32 type, uint32 icon, const Object_Struct& data, const EQ::ItemInstance* inst);
-	Object(const EQ::ItemInstance* inst, char* name,float max_x,float min_x,float max_y,float min_y,float z,float heading,uint32 respawntimer);
+	Object(uint32 id, uint32 type, uint32 icon, const Object_Struct& data, const EQ::ItemInstance* inst = nullptr, bool fix_z = true);
+	Object(const EQ::ItemInstance* inst, const std::string& name, float max_x, float min_x, float max_y, float min_y, float z, float heading, uint32 respawn_timer, bool fix_z);
 	// Loading object from client dropping item on ground
 	Object(Client* client, const EQ::ItemInstance* inst);
-	Object(const EQ::ItemInstance *inst, float x, float y, float z, float heading, uint32 decay_time = 300000);
-	Object(const char *model, float x, float y, float z, float heading, uint8 type, uint32 decay_time = 0);
+	Object(const EQ::ItemInstance *inst, float x, float y, float z, float heading, uint32 decay_time = 300000, bool fix_z = true);
+	Object(const std::string& model, float x, float y, float z, float heading, uint8 type, uint32 decay_time = 0);
 
-	// Destructor
+// Destructor
 	~Object();
 	bool Process();
 	bool IsGroundSpawn() { return m_ground_spawn; }
@@ -117,6 +160,10 @@ public:
 	void CreateDeSpawnPacket(EQApplicationPacket* app);
 	void Depop();
 	void Repop();
+
+	// Floating
+	inline bool IsFixZEnabled() const { return m_fix_z; };
+	inline void SetFixZ(bool fix_z) { m_fix_z = fix_z; };
 
 	//Decay functions
 	void StartDecay() {decay_timer.Start();}
@@ -190,6 +237,8 @@ protected:
 	float  m_min_y;
 	bool   m_ground_spawn;
 	char   m_display_name[64];
+	bool   m_fix_z;
+protected:
 
 	std::map<std::string, std::string> o_EntityVariables;
 

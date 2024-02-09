@@ -720,15 +720,15 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			break;
 		}
 		case ServerOP_ZoneShutdown: {
-			auto s = (ServerZoneStateChange_struct*) pack->pBuffer;
+			auto *s = (ServerZoneStateChange_Struct*) pack->pBuffer;
 			ZoneServer* zs = 0;
-			if (s->ZoneServerID) {
-				zs = zoneserver_list.FindByID(s->ZoneServerID);
-			} else if (s->zoneid) {
-				zs = zoneserver_list.FindByName(ZoneName(s->zoneid));
+			if (s->zone_server_id) {
+				zs = zoneserver_list.FindByID(s->zone_server_id);
+			} else if (s->zone_id) {
+				zs = zoneserver_list.FindByName(ZoneName(s->zone_id));
 			} else {
 				zoneserver_list.SendEmoteMessage(
-					s->adminname,
+					s->admin_name,
 					0,
 					AccountStatus::Player,
 					Chat::White,
@@ -738,7 +738,7 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 
 			if (!zs) {
 				zoneserver_list.SendEmoteMessage(
-					s->adminname,
+					s->admin_name,
 					0,
 					AccountStatus::Player,
 					Chat::White,
@@ -751,8 +751,8 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			break;
 		}
 		case ServerOP_ZoneBootup: {
-			auto s = (ServerZoneStateChange_struct*) pack->pBuffer;
-			zoneserver_list.SOPZoneBootup(s->adminname, s->ZoneServerID, ZoneName(s->zoneid), s->makestatic);
+			auto *s = (ServerZoneStateChange_Struct*) pack->pBuffer;
+			zoneserver_list.SOPZoneBootup(s->admin_name, s->zone_server_id, ZoneName(s->zone_id), s->is_static);
 			break;
 		}
 		case ServerOP_ZoneStatus: {
@@ -795,11 +795,29 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 				client = client_list.FindCharacter(ztz->name);
 			}
 
-			LogInfo("ZoneToZone request for [{}] current zone [{}] req zone [{}]", ztz->name, ztz->current_zone_id, ztz->requested_zone_id);
+			LogZoning(
+				"ZoneToZone request for client [{}] guild_id [{}] requested_zone [{}] requested_zone_id [{}] requested_instance_id [{}] current_zone [{}] current_zone_id [{}] current_instance_id [{}] response [{}] admin [{}] ignorerestrictions [{}]",
+				ztz->name,
+				ztz->guild_id,
+				ZoneName(ztz->requested_zone_id),
+				ztz->requested_zone_id,
+				ztz->requested_instance_id,
+				ZoneName(ztz->current_zone_id),
+				ztz->current_zone_id,
+				ztz->current_instance_id,
+				ztz->response,
+				ztz->admin,
+				ztz->ignorerestrictions
+			);
 
 			/* This is a request from the egress zone */
 			if (GetZoneID() == ztz->current_zone_id && GetInstanceID() == ztz->current_instance_id) {
-				LogInfo("Processing ZTZ for egress from zone for client [{}]", ztz->name);
+				LogZoning(
+					"ZoneToZone request for client [{}] for egress from zone [{}]",
+					ztz->name,
+					ZoneName(ztz->current_zone_id),
+					ztz->current_zone_id
+				);
 
 				if (
 					ztz->admin < AccountStatus::QuestTroupe &&
@@ -807,6 +825,14 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 					zoneserver_list.IsZoneLocked(ztz->requested_zone_id)
 				) {
 					ztz->response = 0;
+
+					LogZoning(
+						"ZoneToZone request for client [{}] for egress from zone [{}] denied, zone is locked",
+						ztz->name,
+						ZoneName(ztz->current_zone_id),
+						ztz->current_zone_id
+					);
+
 					SendPacket(pack);
 					break;
 				}
@@ -818,12 +844,25 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 				);
 
 				if (ingress_server) {
-					LogInfo("Found a zone already booted for [{}]", ztz->name);
+					LogZoning(
+						"Found a zone already booted for ZoneToZone for client [{}] for ingress_server from zone [{}] found booted zone",
+						ztz->name,
+						ZoneName(ztz->current_zone_id),
+						ztz->current_zone_id
+					);
+
 					ztz->response = 1;
 				} else {
 					int server_id;
 					if ((server_id = zoneserver_list.TriggerBootup(ztz->requested_zone_id, ztz->requested_instance_id))) {
-						LogInfo("Successfully booted a zone for [{}]", ztz->name);
+						LogZoning(
+							"ZoneToZone successfully booted a zone for character [{}] zone [{}] ({}) instance [{}] ({})",
+							ztz->name,
+							ZoneName(ztz->requested_zone_id),
+							ztz->requested_zone_id,
+							ztz->requested_instance_id,
+							server_id
+						);
 						ztz->response = 1;
 						ingress_server = zoneserver_list.FindByID(server_id);
 					} else {
@@ -841,8 +880,8 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 					ingress_server->SendPacket(pack);	// inform target server
 				}
 			} else {
-				LogInfo(
-					"Processing ZTZ for ingress to zone for client [{}] instance_id [{}] zone_id [{}]",
+				LogZoning(
+					"Processing ZTZ for egress to zone for client [{}] instance_id [{}] zone_id [{}]",
 					ztz->name,
 					ztz->current_instance_id,
 					ztz->current_zone_id
@@ -854,7 +893,13 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 				);
 
 				if (egress_server) {
-					LogInfo("Found egress server, forwarding client");
+					LogZoning(
+						"Found egress server_id [{}] zone_id [{}] zone_name [{}] instance_id [{}], forwarding client",
+						egress_server->GetID(),
+						egress_server->GetZoneID(),
+						egress_server->GetZoneName(),
+						egress_server->GetInstanceID()
+					);
 					egress_server->SendPacket(pack);
 				}
 			}
@@ -1340,17 +1385,18 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 		case ServerOP_RefreshCensorship:
 		case ServerOP_ReloadAAData:
 		case ServerOP_ReloadAlternateCurrencies:
+		case ServerOP_ReloadBaseData:
 		case ServerOP_ReloadBlockedSpells:
 		case ServerOP_ReloadCommands:
 		case ServerOP_ReloadDoors:
 		case ServerOP_ReloadDataBucketsCache:
+		case ServerOP_ReloadFactions:
 		case ServerOP_ReloadGroundSpawns:
 		case ServerOP_ReloadLevelEXPMods:
 		case ServerOP_ReloadMerchants:
 		case ServerOP_ReloadNPCEmotes:
 		case ServerOP_ReloadObjects:
 		case ServerOP_ReloadPerlExportSettings:
-		case ServerOP_ReloadRules:
 		case ServerOP_ReloadStaticZoneData:
 		case ServerOP_ReloadTitles:
 		case ServerOP_ReloadTraps:
@@ -1359,6 +1405,7 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 		case ServerOP_ReloadWorld:
 		case ServerOP_ReloadZonePoints:
 		case ServerOP_ReloadZoneData:
+		case ServerOP_ReloadLoot:
 		case ServerOP_RezzPlayerAccept:
 		case ServerOP_SpawnStatusChange:
 		case ServerOP_UpdateSpawn:
@@ -1373,6 +1420,36 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 		case ServerOP_WWTaskUpdate:
 		case ServerOP_ZonePlayer: {
 			zoneserver_list.SendPacket(pack);
+			break;
+		}
+		case ServerOP_ReloadRules: {
+			zoneserver_list.SendPacket(pack);
+			RuleManager::Instance()->LoadRules(&database, "default", true);
+			break;
+		}
+		case ServerOP_IsOwnerOnline: {
+			if (pack->size != sizeof(ServerIsOwnerOnline_Struct)) {
+				break;
+			}
+
+			auto o = (ServerIsOwnerOnline_Struct*) pack->pBuffer;
+			auto cle = client_list.FindCLEByAccountID(o->account_id);
+
+			o->online = cle ? 1 : 0;
+
+			if (o->online) {
+				LogCorpsesDetail(
+					"ServerOP_IsOwnerOnline account_id [{}] corpse name [{}] found to be online, sending online update to zone_id [{}]",
+					o->account_id,
+					o->name,
+					o->zone_id
+				);
+			}
+
+			auto zs = zoneserver_list.FindByZoneID(o->zone_id);
+			if (zs) {
+				zs->SendPacket(pack);
+			}
 			break;
 		}
 		case ServerOP_ReloadContentFlags: {
@@ -1557,20 +1634,23 @@ void ZoneServer::ChangeWID(uint32 iCharID, uint32 iWID) {
 
 
 void ZoneServer::TriggerBootup(uint32 in_zone_id, uint32 in_instance_id, const char* admin_name, bool is_static_zone) {
-	is_booting_up = true;
+	is_booting_up       = true;
 	zone_server_zone_id = in_zone_id;
-	instance_id = in_instance_id;
+	instance_id         = in_instance_id;
 
-	auto pack = new ServerPacket(ServerOP_ZoneBootup, sizeof(ServerZoneStateChange_struct));
-	auto s = (ServerZoneStateChange_struct*) pack->pBuffer;
-	s->ZoneServerID = zone_server_id;
+	auto pack = new ServerPacket(ServerOP_ZoneBootup, sizeof(ServerZoneStateChange_Struct));
+	auto *s = (ServerZoneStateChange_Struct*) pack->pBuffer;
+
+	s->zone_server_id = zone_server_id;
+
+	s->zone_id     = in_zone_id ? in_zone_id : GetZoneID();
+	s->instance_id = in_instance_id;
+	s->is_static   = is_static_zone;
+
 	if (admin_name) {
-		strn0cpy(s->adminname, admin_name, sizeof(s->adminname));
+		strn0cpy(s->admin_name, admin_name, sizeof(s->admin_name));
 	}
 
-	s->zoneid = in_zone_id ? in_zone_id : GetZoneID();
-	s->instanceid = in_instance_id;
-	s->makestatic = is_static_zone;
 	SendPacket(pack);
 	delete pack;
 	LSBootUpdate(in_zone_id, in_instance_id);

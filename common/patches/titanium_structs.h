@@ -1,5 +1,5 @@
 /*	EQEMu: Everquest Server Emulator
-	
+
 	Copyright (C) 2001-2016 EQEMu Development Team (http://eqemulator.net)
 
 	This program is free software; you can redistribute it and/or modify
@@ -2604,7 +2604,7 @@ struct Make_Pet_Struct { //Simple struct for getting pet info
 	uint32 min_dmg;
 	uint32 max_dmg;
 };
-struct Ground_Spawn{
+struct GroundSpawn{
 	float max_x;
 	float max_y;
 	float min_x;
@@ -2616,8 +2616,8 @@ struct Ground_Spawn{
 	uint32 max_allowed;
 	uint32 respawntimer;
 };
-struct Ground_Spawns {
-	struct Ground_Spawn spawn[50]; //Assigned max number to allow
+struct GroundSpawns {
+	struct GroundSpawn spawn[50]; //Assigned max number to allow
 };
 
 //struct PetitionBug_Struct{
@@ -3017,23 +3017,39 @@ struct leadExpUpdateStruct {
    /*0028*/ uint32 unknown0028;
 };
 
-
-
 struct RaidGeneral_Struct {
-/*00*/	uint32		action;	//=10
-/*04*/	char		player_name[64];	//should both be the player's name
-/*04*/	char		leader_name[64];
+/*000*/	uint32		action;	//=10
+/*004*/	char		player_name[64];	//should both be the player's name
+/*068*/	char		leader_name[64];
 /*132*/	uint32		parameter;
 };
 
-struct RaidAdd_Struct {
-/*000*/	uint32		action;	//=0
-/*004*/	char		player_name[64];	//should both be the player's name
-/*068*/	char		leader_name[64];
-/*132*/	uint8		_class;
-/*133*/	uint8		level;
-/*134*/	uint8		has_group;
-/*135*/	uint8		unknown135;	//seems to be 0x42 or 0
+struct RaidAddMember_Struct {
+/*000*/	RaidGeneral_Struct raidGen;
+/*136*/	uint8		_class;
+/*137*/	uint8		level;
+/*138*/	uint8		isGroupLeader;
+/*139*/	uint8		unknown139;	//seems to be 0x42 or 0
+};
+
+struct RaidNote_Struct {
+/*000*/ RaidGeneral_Struct general;
+/*136*/ char note[64];
+};
+
+struct RaidMOTD_Struct {
+/*000*/ RaidGeneral_Struct general; // leader_name and action only used
+/*136*/ char motd[1024]; // max size is 1024, but reply is variable
+};
+
+struct RaidLeadershipUpdate_Struct {
+	/*000*/	uint32 action;
+	/*004*/	char player_name[64];
+//	/*068*/	uint32 Unknown068;
+	/*072*/	char leader_name[64];
+	/*136*/	GroupLeadershipAA_Struct group; //unneeded
+	/*200*/	RaidLeadershipAA_Struct raid;
+	/*264*/	char Unknown264[128];
 };
 
 struct RaidCreate_Struct {

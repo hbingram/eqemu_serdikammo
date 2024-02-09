@@ -48,7 +48,7 @@ SET(zone_sources
     heal_rotation.cpp
     horse.cpp
     inventory.cpp
-    loottables.cpp
+    loot.cpp
     lua_bot.cpp
     lua_bit.cpp
     lua_corpse.cpp
@@ -87,7 +87,7 @@ SET(zone_sources
     hate_list.cpp
     horse.cpp
     inventory.cpp
-    loottables.cpp
+    loot.cpp
     main.cpp
     map.cpp
     merc.cpp
@@ -133,6 +133,8 @@ SET(zone_sources
     quest_parser_collection.cpp
     raids.cpp
     raycast_mesh.cpp
+    sidecar_api/sidecar_api.cpp
+    sidecar_api/loot_simulator_controller.cpp
     shared_task_zone_messaging.cpp
     spawn2.cpp
     spawn2.h
@@ -158,7 +160,9 @@ SET(zone_sources
     zone.cpp
     zone_config.cpp
     zonedb.cpp
+    zone_base_data.cpp
     zone_event_scheduler.cpp
+    zone_npc_factions.cpp
     zone_reload.cpp
     zoning.cpp
 )
@@ -189,7 +193,6 @@ SET(zone_headers
     embperl.h
     encounter.h
     entity.h
-    errmsg.h
     event_codes.h
     expedition.h
     expedition_database.h
@@ -253,6 +256,7 @@ SET(zone_headers
     quest_parser_collection.h
     raids.h
     raycast_mesh.h
+    sidecar_api/sidecar_api.h
     shared_task_zone_messaging.h
     spawn2.cpp
     spawn2.h
@@ -273,12 +277,19 @@ SET(zone_headers
     zone_config.h
     zonedb.h
     zonedump.h
+    zone_cli.h
     zone_reload.h
-)
+    zone_cli.cpp)
 
 ADD_EXECUTABLE(zone ${zone_sources} ${zone_headers})
 
 INSTALL(TARGETS zone RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+
+IF (WIN32 AND EQEMU_BUILD_PCH)
+    TARGET_PRECOMPILE_HEADERS(zone PRIVATE ../common/pch/pch.h)
+    TARGET_PRECOMPILE_HEADERS(zone PRIVATE ../common/types.h ../common/eqemu_logsys.h ../common/eqemu_logsys_log_aliases.h ../common/features.h ../common/global_define.h)
+    TARGET_PRECOMPILE_HEADERS(zone PRIVATE mob.h npc.h corpse.h doors.h bot.h entity.h client.h zone.h)
+ENDIF()
 
 ADD_DEFINITIONS(-DZONE)
 

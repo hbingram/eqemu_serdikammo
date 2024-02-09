@@ -166,6 +166,7 @@ public:
 	void GetCharactersInInstance(uint16 instance_id, std::list<uint32> &character_ids);
 	void PurgeExpiredInstances();
 	void SetInstanceDuration(uint16 instance_id, uint32 new_duration);
+	void CleanupInstanceCorpses();
 
 	/* Adventure related. */
 
@@ -188,10 +189,10 @@ public:
 	uint32	CheckLogin(const char* name, const char* password, const char *loginserver, int16* oStatus = 0);
 	uint32	CreateAccount(const char* name, const char* password, int16 status, const char* loginserver, uint32 lsaccount_id);
 	uint32	GetAccountIDFromLSID(const std::string& in_loginserver_id, uint32 in_loginserver_account_id, char* in_account_name = 0, int16* in_status = 0);
-	uint8	GetAgreementFlag(uint32 acctid);
+	uint8	GetAgreementFlag(uint32 account_id);
 
 	void	GetAccountFromID(uint32 id, char* oAccountName, int16* oStatus);
-	void	SetAgreementFlag(uint32 acctid);
+	void	SetAgreementFlag(uint32 account_id);
 
 	int  GetIPExemption(std::string account_ip);
 	void SetIPExemption(std::string account_ip, int exemption_amount);
@@ -226,11 +227,6 @@ public:
 
 	void    PurgeAllDeletedDataBuckets();
 
-	/* Database Conversions 'database_conversions.cpp' */
-
-	bool	CheckDatabaseConversions();
-	bool	CheckDatabaseConvertCorpseDeblob();
-	bool	CheckDatabaseConvertPPDeblob();
 
 	/* Database Variables */
 

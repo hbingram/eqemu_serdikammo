@@ -100,6 +100,7 @@ int command_init(void)
 		command_add("camerashake", "[Duration (Milliseconds)] [Intensity (1-10)] - Shakes the camera on everyone's screen globally.", AccountStatus::QuestTroupe, command_camerashake) ||
 		command_add("castspell", "[Spell ID] [Instant (0 = False, 1 = True, Default is 1 if Unused)] - Cast a spell", AccountStatus::Guide, command_castspell) ||
 		command_add("chat", "[Channel ID] [Message] - Send a channel message to all zones", AccountStatus::GMMgmt, command_chat) ||
+		command_add("clearxtargets", "Clears XTargets", AccountStatus::Player, command_clearxtargets) ||
 		command_add("copycharacter", "[source_char_name] [dest_char_name] [dest_account_name] - Copies character to destination account", AccountStatus::GMImpossible, command_copycharacter) ||
 		command_add("corpse", "Manipulate corpses, use with no arguments for help", AccountStatus::Guide, command_corpse) ||
 		command_add("corpsefix", "Attempts to bring corpses from underneath the ground within close proximity of the player", AccountStatus::Player, command_corpsefix) ||
@@ -137,6 +138,7 @@ int command_init(void)
 		command_add("givemoney", "[Platinum] [Gold] [Silver] [Copper] - Gives specified amount of money to you or your player target", AccountStatus::GMMgmt, command_givemoney) ||
 		command_add("gmzone", "[Zone ID|Zone Short Name] [Version] [Instance Identifier] - Zones to a private GM instance (Version defaults to 0 and Instance Identifier defaults to 'gmzone' if not used)", AccountStatus::GMAdmin, command_gmzone) ||
 		command_add("goto", "[playername] or [x y z] [h] - Teleport to the provided coordinates or to your target", AccountStatus::Steward, command_goto) ||
+		command_add("grantaa", "[level] - Grants a player all available AA points up the specified level, all AAs are granted if no level is specified.", AccountStatus::GMMgmt, command_grantaa) ||
 		command_add("grid", "[add/delete] [grid_num] [wandertype] [pausetype] - Create/delete a wandering grid", AccountStatus::GMAreas, command_grid) ||
 		command_add("guild", "Guild manipulation commands. Use argument help for more info.", AccountStatus::Steward, command_guild) ||
 		command_add("help", "[Search Criteria] - List available commands and their description, specify partial command as argument to search", AccountStatus::Player, command_help) ||
@@ -216,6 +218,7 @@ int command_init(void)
 		command_add("summonitem", "[itemid] [charges] - Summon an item onto your cursor. Charges are optional.", AccountStatus::GMMgmt, command_summonitem) ||
 		command_add("suspend", "[name] [days] [reason] - Suspend by character name and for specificed number of days", AccountStatus::GMLeadAdmin, command_suspend) ||
 		command_add("suspendmulti", "[Character Name One|Character Name Two|etc] [Days] [Reason] - Suspend multiple characters by name for specified number of days", AccountStatus::GMLeadAdmin, command_suspendmulti) ||
+		command_add("takeplatinum", "[Platinum] - Takes specified amount of platinum from you or your player target", AccountStatus::GMMgmt, command_takeplatinum) ||
 		command_add("task", "(subcommand) - Task system commands", AccountStatus::GMLeadAdmin, command_task) ||
 		command_add("petname", "[newname] - Temporarily renames your pet. Leave name blank to restore the original name.", AccountStatus::GMAdmin, command_petname) ||
 		command_add("traindisc", "[level] - Trains all the disciplines usable by the target, up to level specified. (may freeze client for a few seconds)", AccountStatus::GMLeadAdmin, command_traindisc) ||
@@ -236,7 +239,6 @@ int command_init(void)
 		command_add("zonebootup", "[ZoneServerID] [shortname] - Make a zone server boot a specific zone", AccountStatus::GMLeadAdmin, command_zonebootup) ||
 		command_add("zoneinstance", "[Instance ID] [X] [Y] [Z] - Teleport to specified Instance by ID (coordinates are optional)", AccountStatus::Guide, command_zone_instance) ||
 		command_add("zoneshutdown", "[shortname] - Shut down a zone server", AccountStatus::GMLeadAdmin, command_zoneshutdown) ||
-		command_add("zopp", "Troubleshooting command - Sends a fake item packet to you. No server reference is created.", AccountStatus::GMImpossible, command_zopp) ||
 		command_add("zsave", " Saves zheader to the database", AccountStatus::QuestTroupe, command_zsave)
 	) {
 		command_deinit();
@@ -436,13 +438,13 @@ int command_realdispatch(Client *c, std::string message, bool ignore_status)
 {
 	Seperator sep(message.c_str(), ' ', 10, 100, true); // "three word argument" should be considered 1 arg
 
-	std::string cstr(sep.arg[0] + 1);
+	std::string command(sep.arg[0] + 1);
 
-	if (commandlist.count(cstr) != 1) {
+	if (commandlist.count(command) != 1) {
 		return -2;
 	}
 
-	auto cur = commandlist[cstr];
+	const CommandRecord* current_command = commandlist[command];
 
 	bool is_subcommand            = false;
 	bool can_use_subcommand       = false;
@@ -450,11 +452,11 @@ int command_realdispatch(Client *c, std::string message, bool ignore_status)
 
 	const auto arguments = sep.argnum;
 
-	if (arguments >= 2) {
+	if (arguments) {
 		const std::string& sub_command = sep.arg[1];
 
 		for (const auto &e : command_subsettings) {
-			if (e.sub_command == sub_command) {
+			if (e.parent_command == command && e.sub_command == sub_command) {
 				can_use_subcommand       = c->Admin() >= static_cast<int16>(e.access_level);
 				is_subcommand            = true;
 				found_subcommand_setting = true;
@@ -464,7 +466,7 @@ int command_realdispatch(Client *c, std::string message, bool ignore_status)
 
 		if (!found_subcommand_setting) {
 			for (const auto &e: command_subsettings) {
-				if (e.sub_command == sub_command) {
+				if (e.parent_command == command && e.sub_command == sub_command) {
 					can_use_subcommand = c->Admin() >= static_cast<int16>(e.access_level);
 					is_subcommand      = true;
 					break;
@@ -474,7 +476,7 @@ int command_realdispatch(Client *c, std::string message, bool ignore_status)
 	}
 
 	if (!ignore_status) {
-		if (!is_subcommand && c->Admin() < cur->admin) {
+		if (!is_subcommand && c->Admin() < current_command->admin) {
 			c->Message(Chat::White, "Your status is not high enough to use this command.");
 			return -1;
 		}
@@ -496,7 +498,7 @@ int command_realdispatch(Client *c, std::string message, bool ignore_status)
 		QServ->PlayerLogEvent(Player_Log_Issued_Commands, c->CharacterID(), event_desc);
 	}
 
-	if (cur->admin >= COMMANDS_LOGGING_MIN_STATUS) {
+	if (current_command->admin >= COMMANDS_LOGGING_MIN_STATUS) {
 		LogCommands(
 			"[{}] ([{}]) used command: [{}] (target=[{}])",
 			c->GetName(),
@@ -506,8 +508,8 @@ int command_realdispatch(Client *c, std::string message, bool ignore_status)
 		);
 	}
 
-	if (!cur->function) {
-		LogError("Command [{}] has a null function", cstr);
+	if (!current_command->function) {
+		LogError("Command [{}] has a null function", command);
 		return -1;
 	}
 
@@ -524,7 +526,7 @@ int command_realdispatch(Client *c, std::string message, bool ignore_status)
 		RecordPlayerEventLogWithClient(c, PlayerEvent::GM_COMMAND, e);
 	}
 
-	cur->function(c, &sep);	// Dispatch C++ Command
+	current_command->function(c, &sep);	// Dispatch C++ Command
 
 	return 0;
 }
@@ -664,7 +666,7 @@ void command_hotfix(Client *c, const Seperator *sep)
 				hotfix_command = fmt::format("\"{}\" -hotfix={}", shared_memory_path, hotfix_name);
 			}
 			else {
-				hotfix_command = fmt::format("\"{}\"", shared_memory_path, hotfix_name);
+				hotfix_command = fmt::format("\"{}\"", shared_memory_path);
 			}
 
 			LogInfo("Running hotfix command [{}]", hotfix_command);
@@ -690,7 +692,7 @@ void command_hotfix(Client *c, const Seperator *sep)
 			}
 			worldserver.SendPacket(&pack);
 
-			if (c) { c->Message(Chat::White, "Hotfix applied"); }
+			worldserver.SendEmoteMessage(0, 0, AccountStatus::ApprenticeGuide, Chat::Yellow, "Hotfix applied");
 		}
 	);
 
@@ -790,6 +792,7 @@ void command_bot(Client *c, const Seperator *sep)
 #include "gm_commands/camerashake.cpp"
 #include "gm_commands/castspell.cpp"
 #include "gm_commands/chat.cpp"
+#include "gm_commands/clearxtargets.cpp"
 #include "gm_commands/copycharacter.cpp"
 #include "gm_commands/corpse.cpp"
 #include "gm_commands/corpsefix.cpp"
@@ -826,6 +829,7 @@ void command_bot(Client *c, const Seperator *sep)
 #include "gm_commands/givemoney.cpp"
 #include "gm_commands/gmzone.cpp"
 #include "gm_commands/goto.cpp"
+#include "gm_commands/grantaa.cpp"
 #include "gm_commands/grid.cpp"
 #include "gm_commands/guild.cpp"
 #include "gm_commands/hp.cpp"
@@ -863,6 +867,7 @@ void command_bot(Client *c, const Seperator *sep)
 #include "gm_commands/nukebuffs.cpp"
 #include "gm_commands/nukeitem.cpp"
 #include "gm_commands/object.cpp"
+#include "gm_commands/object_manipulation.cpp"
 #include "gm_commands/path.cpp"
 #include "gm_commands/peqzone.cpp"
 #include "gm_commands/petitems.cpp"
@@ -901,6 +906,7 @@ void command_bot(Client *c, const Seperator *sep)
 #include "gm_commands/summonitem.cpp"
 #include "gm_commands/suspend.cpp"
 #include "gm_commands/suspendmulti.cpp"
+#include "gm_commands/takeplatinum.cpp"
 #include "gm_commands/task.cpp"
 #include "gm_commands/traindisc.cpp"
 #include "gm_commands/tune.cpp"
@@ -920,5 +926,4 @@ void command_bot(Client *c, const Seperator *sep)
 #include "gm_commands/zonebootup.cpp"
 #include "gm_commands/zoneshutdown.cpp"
 #include "gm_commands/zone_instance.cpp"
-#include "gm_commands/zopp.cpp"
 #include "gm_commands/zsave.cpp"

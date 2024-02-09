@@ -124,6 +124,12 @@ struct LDoNTrapTemplate
 	uint8 locked;
 };
 
+enum CrystalReclaimTypes
+{
+	Ebon = 5,
+	Radiant = 4,
+};
+
 ///////////////////////////////////////////////////////////////////////////////
 
 
@@ -386,7 +392,7 @@ struct NewZone_Struct {
 /*0724*/	uint32 underworld_teleport_index; // > 0 teleports w/ zone point index, invalid succors, if this value is 0, it prevents you from running off edges that would end up underworld
 /*0728*/	uint32 lava_damage; // Seen 50
 /*0732*/	uint32 min_lava_damage; // Seen 10
-/*0736*/
+/*0736*/	float safe_heading;
 };
 
 /*
@@ -623,6 +629,12 @@ struct ConsentResponse_Struct {
 	char ownername[64];
 	uint8 permission;
 	char zonename[32];
+};
+
+struct NameApproval_Struct {
+	char name[64];
+	uint32 race_id;
+	uint32 class_id;
 };
 
 /*
@@ -2559,7 +2571,10 @@ struct GMEmoteZone_Struct {
 struct BookText_Struct {
 	uint8 window;	// where to display the text (0xFF means new window)
 	uint8 type;		//type: 0=scroll, 1=book, 2=item info.. prolly others.
-	uint32 invslot;	// Only used in SoF and later clients.
+	int16 invslot;  // Only used in SoF and later clients.
+	int32 target_id;
+	int8 can_cast;
+	int8 can_scribe;
 	char booktext[1]; // Variable Length
 };
 // This is the request to read a book.
@@ -2568,9 +2583,16 @@ struct BookText_Struct {
 struct BookRequest_Struct {
 	uint8 window;	// where to display the text (0xFF means new window)
 	uint8 type;		//type: 0=scroll, 1=book, 2=item info.. prolly others.
-	uint32 invslot;	// Only used in Sof and later clients;
-	int16 subslot; // The subslot inside of a bag if it is inside one.
+	int16 invslot;  // Only used in Sof and later clients;
+	int32 target_id;
 	char txtfile[20];
+};
+
+// used by Scribe and CastSpell book buttons
+struct BookButton_Struct
+{
+	int16 invslot;   // server slot
+	int32 target_id;
 };
 
 /*
@@ -2584,11 +2606,11 @@ struct BookRequest_Struct {
 struct Object_Struct {
 /*00*/	uint32	linked_list_addr[2];// They are, get this, prev and next, ala linked list
 /*08*/	float	size;				//
-/*10*/	uint16	solidtype;			//
+/*10*/	uint16	solid_type;			//
 /*12*/	uint32	drop_id;			// Unique object id for zone
 /*16*/	uint16	zone_id;			// Redudant, but: Zone the object appears in
 /*18*/	uint16	zone_instance;		//
-/*20*/	uint32	unknown020;			//
+/*20*/	uint32	incline;			//
 /*24*/	uint32	unknown024;			//
 /*28*/	float	tilt_x;
 /*32*/	float	tilt_y;
@@ -3429,20 +3451,23 @@ struct Make_Pet_Struct { //Simple struct for getting pet info
 	uint32 min_dmg;
 	uint32 max_dmg;
 };
-struct Ground_Spawn{
-	float max_x;
-	float max_y;
-	float min_x;
-	float min_y;
-	float max_z;
-	float heading;
-	char name[20];
-	uint32 item;
-	uint32 max_allowed;
-	uint32 respawntimer;
+
+struct GroundSpawn {
+	float       max_x         = 0.0f;
+	float       max_y         = 0.0f;
+	float       min_x         = 0.0f;
+	float       min_y         = 0.0f;
+	float       max_z         = 0.0f;
+	float       heading       = 0.0f;
+	std::string name          = std::string();
+	uint32      item_id       = 0;
+	uint32      max_allowed   = 1;
+	uint32      respawn_timer = 1;
+	bool        fix_z         = true;
 };
-struct Ground_Spawns {
-	struct Ground_Spawn spawn[50]; //Assigned max number to allow
+
+struct GroundSpawns {
+	struct GroundSpawn spawn[50]; //Assigned max number to allow
 };
 
 //struct PetitionBug_Struct{
@@ -4154,7 +4179,6 @@ struct RaidGeneral_Struct {
 /*68*/	uint32		unknown1;
 /*72*/	char		leader_name[64];
 /*136*/	uint32		parameter;
-/*200*/	char		note[64];
 };
 
 struct RaidAddMember_Struct {
@@ -4165,9 +4189,14 @@ struct RaidAddMember_Struct {
 /*139*/	uint8 flags[5]; //no idea if these are needed...
 };
 
+struct RaidNote_Struct {
+/*000*/ RaidGeneral_Struct general;
+/*140*/ char note[64];
+};
+
 struct RaidMOTD_Struct {
-/*000*/ RaidGeneral_Struct general; // leader_name and action only used
-/*136*/ char motd[0]; // max size is 1024, but reply is variable
+/*000*/ RaidGeneral_Struct general;
+/*140*/ char motd[1024];
 };
 
 struct RaidLeadershipUpdate_Struct {
@@ -5114,8 +5143,6 @@ struct GroupMakeLeader_Struct
 //ex for a blank crowns window you would send:
 //999999|1|999999|0
 //any items come after in much the same way adventure merchant items do except there is no theme included
-#define ALT_CURRENCY_OP_POPULATE 8
-#define ALT_CURRENCY_OP_UPDATE 7
 
 //Server -> Client
 //Populates the initial Alternate Currency Window
@@ -5526,28 +5553,6 @@ struct MercenaryMerchantResponse_Struct {
 /*0004*/
 };
 
-struct ServerLootItem_Struct {
-	uint32	item_id;	  // uint32	item_id;
-	int16  equip_slot;	  // int16	equip_slot;
-	uint16 charges;	  // uint8	charges;
-	uint16 lootslot;	  // uint16	lootslot;
-	uint32 aug_1;		  // uint32	aug_1;
-	uint32 aug_2;		  // uint32	aug_2;
-	uint32 aug_3;		  // uint32	aug_3;
-	uint32 aug_4;		  // uint32	aug_4;
-	uint32 aug_5;		  // uint32	aug_5;
-	uint32 aug_6;		  // uint32	aug_5;
-	bool attuned;
-	std::string custom_data;
-	uint32 ornamenticon {};
-	uint32 ornamentidfile {};
-	uint32 ornament_hero_model {};
-	uint16 trivial_min_level;
-	uint16 trivial_max_level;
-	uint16 npc_min_level;
-	uint16 npc_max_level;
-};
-
 //Found in client near a ref to the string:
 //"Got a broadcast message for ... %s ...\n"
 struct ClientMarqueeMessage_Struct {
@@ -5565,9 +5570,6 @@ struct ClientMarqueeMessage_Struct {
 	char msg[1]; //message plus null terminator
 
 };
-
-typedef std::list<ServerLootItem_Struct*> ItemList;
-
 
 struct fling_struct {
 /* 00 */ uint32 collision; // 0 collision is off, anything else it's on

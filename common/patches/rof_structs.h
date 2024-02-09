@@ -3556,7 +3556,7 @@ struct Make_Pet_Struct { //Simple struct for getting pet info
 	uint32 min_dmg;
 	uint32 max_dmg;
 };
-struct Ground_Spawn{
+struct GroundSpawn{
 	float max_x;
 	float max_y;
 	float min_x;
@@ -3568,8 +3568,8 @@ struct Ground_Spawn{
 	uint32 max_allowed;
 	uint32 respawntimer;
 };
-struct Ground_Spawns {
-	struct Ground_Spawn spawn[50]; //Assigned max number to allow
+struct GroundSpawns {
+	struct GroundSpawn spawn[50]; //Assigned max number to allow
 };
 
 //struct PetitionBug_Struct{
@@ -4136,9 +4136,14 @@ struct RaidAddMember_Struct {
 /*139*/	uint8 flags[5]; //no idea if these are needed...
 };
 
+struct RaidNote_Struct {
+/*000*/ RaidGeneral_Struct general;
+/*140*/ char note[64];
+};
+
 struct RaidMOTD_Struct {
 /*000*/ RaidGeneral_Struct general; // leader_name and action only used
-/*140*/ char motd[0]; // max size 1024, but reply is variable
+/*140*/ char motd[1024]; // max size is 1024, but reply is variable
 };
 
 struct RaidLeadershipUpdate_Struct {

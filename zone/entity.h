@@ -171,7 +171,7 @@ public:
 			return it->second;
 		return nullptr;
 	}
-	Client *GetClientByName(const char *name);
+	Client *GetClientByName(const char* name);
 	Client *GetClientByAccID(uint32 accid);
 	inline Client *GetClientByID(uint16 id)
 	{
@@ -413,8 +413,7 @@ public:
 	void	QueueClientsStatus(Mob* sender, const EQApplicationPacket* app, bool ignore_sender = false, uint8 minstatus = AccountStatus::Player, uint8 maxstatus = AccountStatus::Player);
 	void	QueueClientsGuild(Mob* sender, const EQApplicationPacket* app, bool ignore_sender = false, uint32 guildeqid = 0);
 	void	QueueClientsGuildBankItemUpdate(const GuildBankItemUpdate_Struct *gbius, uint32 GuildID);
-	void	QueueClientsByTarget(Mob* sender, const EQApplicationPacket* app, bool iSendToSender = true, Mob* SkipThisMob = 0, bool ackreq = true,
-						bool HoTT = true, uint32 ClientVersionBits = 0xFFFFFFFF, bool inspect_buffs = false);
+	void	QueueClientsByTarget(Mob* sender, const EQApplicationPacket* app, bool iSendToSender = true, Mob* SkipThisMob = 0, bool ackreq = true, bool HoTT = true, uint32 ClientVersionBits = 0xFFFFFFFF, bool inspect_buffs = false, bool clear_target_window  = false);
 
 	void	QueueClientsByXTarget(Mob* sender, const EQApplicationPacket* app, bool iSendToSender = true, EQ::versions::ClientVersionBitmask client_version_bits = EQ::versions::ClientVersionBitmask::maskAllClients);
 	void	QueueToGroupsForNPCHealthAA(Mob* sender, const EQApplicationPacket* app);
@@ -464,7 +463,7 @@ public:
 	void	UpdateHoTT(Mob* target);
 
 	void	Process();
-	void	ClearAggro(Mob* targ);
+	void	ClearAggro(Mob* targ, bool clear_caster_id = false);
 	void    ClearWaterAggro(Mob* targ);
 	void	ClearFeignAggro(Mob* targ);
 	void	ClearZoneFeignAggro(Mob* targ);
@@ -530,8 +529,8 @@ public:
 	inline const std::unordered_map<uint16, Merc *> &GetMercList() { return merc_list; }
 	inline const std::unordered_map<uint16, Client *> &GetClientList() { return client_list; }
 	inline const std::list<Bot *> &GetBotList() { return bot_list; }
-	std::vector<Bot *> GetBotListByCharacterID(uint32 character_id, uint8 class_id = NO_CLASS);
-	std::vector<Bot *> GetBotListByClientName(std::string client_name, uint8 class_id = NO_CLASS);
+	std::vector<Bot *> GetBotListByCharacterID(uint32 character_id, uint8 class_id = Class::None);
+	std::vector<Bot *> GetBotListByClientName(std::string client_name, uint8 class_id = Class::None);
 	void SignalAllBotsByOwnerCharacterID(uint32 character_id, int signal_id);
 	void SignalAllBotsByOwnerName(std::string owner_name, int signal_id);
 	void SignalBotByBotID(uint32 bot_id, int signal_id);

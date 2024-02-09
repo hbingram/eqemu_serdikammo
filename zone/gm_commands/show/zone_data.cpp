@@ -24,7 +24,7 @@ void ShowZoneData(Client *c, const Seperator *sep)
 				fmt::format(
 					"{} {} {}",
 					DialogueWindow::ColorMessage(
-						"red1",
+						"red_1",
 						std::to_string(zone->newzone_data.fog_red[fog_index])
 					),
 					DialogueWindow::ColorMessage(
@@ -100,10 +100,11 @@ void ShowZoneData(Client *c, const Seperator *sep)
 		DialogueWindow::TableCell("Safe Coordinates") +
 		DialogueWindow::TableCell(
 			fmt::format(
-				"{:.2f}, {:.2f}, {:.2f}",
+				"{:.2f}, {:.2f}, {:.2f} Heading: {:.2f}",
 				zone->newzone_data.safe_x,
 				zone->newzone_data.safe_y,
-				zone->newzone_data.safe_z
+				zone->newzone_data.safe_z,
+				zone->newzone_data.safe_heading
 			)
 		)
 	);
@@ -206,7 +207,7 @@ void ShowZoneData(Client *c, const Seperator *sep)
 		DialogueWindow::TableCell(
 			zone->newzone_data.suspend_buffs ?
 			DialogueWindow::ColorMessage("forest_green", "Y") :
-			DialogueWindow::ColorMessage("red1", "N")
+			DialogueWindow::ColorMessage("red_1", "N")
 		)
 	);
 

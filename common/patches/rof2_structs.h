@@ -2868,15 +2868,23 @@ struct BookText_Struct {
 // This is just a "text file" on the server
 // or in our case, the 'name' column in our books table.
 struct BookRequest_Struct {
-/*0000*/	uint32 window;		// where to display the text (0xFFFFFFFF means new window).
-/*0004*/	uint16 invslot;		// Is the slot, but the RoF2 conversion causes it to fail.  Turned to 0 since it isnt required anyway.
-/*0006*/	int16 subslot;		// Inventory sub-slot (0-x)
-/*0008*/	uint16 unknown006;	// Seen FFFF
-/*0010*/	uint16 unknown008;	// seen 0000
-/*0012*/	uint32 type;		// 0 = Scroll, 1 = Book, 2 = Item Info. Possibly others
-/*0016*/	uint32 unknown0012;
-/*0020*/	uint16 unknown0016;
-/*0022*/	char txtfile[8194];
+/*0000*/ uint32 window;         // where to display the text (0xFFFFFFFF means new window).
+/*0004*/ TypelessInventorySlot_Struct invslot; // book ItemIndex (with int16_t alignment padding)
+/*0012*/ uint32 type;           // 0 = Scroll, 1 = Book, 2 = Item Info. Possibly others
+/*0016*/ uint32 target_id;      // client's target when using the book
+/*0020*/ uint8 can_cast;        // show Cast Spell button in book window
+/*0021*/ uint8 can_scribe;      // show Scribe button in book window
+/*0022*/ char txtfile[8194];
+/*8216*/
+};
+
+// used by Scribe and CastSpell book buttons
+struct BookButton_Struct
+{
+/*0000*/ TypelessInventorySlot_Struct slot; // book ItemIndex (with int16_t alignment padding)
+/*0008*/ int32 target_id; // client's target when using the book button
+/*0012*/ int32 unused;    // always 0 from button packets
+/*0016*/
 };
 
 /*
@@ -3611,7 +3619,7 @@ struct Make_Pet_Struct { //Simple struct for getting pet info
 	uint32 min_dmg;
 	uint32 max_dmg;
 };
-struct Ground_Spawn{
+struct GroundSpawn{
 	float max_x;
 	float max_y;
 	float min_x;
@@ -3623,8 +3631,8 @@ struct Ground_Spawn{
 	uint32 max_allowed;
 	uint32 respawntimer;
 };
-struct Ground_Spawns {
-	struct Ground_Spawn spawn[50]; //Assigned max number to allow
+struct GroundSpawns {
+	struct GroundSpawn spawn[50]; //Assigned max number to allow
 };
 
 //struct PetitionBug_Struct{
@@ -4190,9 +4198,14 @@ struct RaidAddMember_Struct {
 /*139*/	uint8 flags[5]; //no idea if these are needed...
 };
 
+struct RaidNote_Struct {
+/*000*/ RaidGeneral_Struct general;
+/*140*/ char note[64];
+};
+
 struct RaidMOTD_Struct {
-/*000*/ RaidGeneral_Struct general; // leader_name and action only used
-/*140*/ char motd[0]; // max size 1024, but reply is variable
+/*000*/ RaidGeneral_Struct general;
+/*140*/ char motd[1024];
 };
 
 struct RaidLeadershipUpdate_Struct {

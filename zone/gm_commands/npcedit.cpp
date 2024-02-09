@@ -339,24 +339,33 @@ void command_npcedit(Client *c, const Seperator *sep)
 		}
 	} else if (!strcasecmp(sep->arg[1], "faction")) {
 		if (sep->IsNumber(2)) {
-			auto faction_id   = Strings::ToInt(sep->arg[2]);
-			auto faction_name = content_db.GetFactionName(faction_id);
-			n.npc_faction_id = faction_id;
-			d = fmt::format(
-				"{} is now using Faction {}.",
-				npc_id_string,
-				(
-					!faction_name.empty() ?
-					fmt::format(
-						"{} ({})",
-						faction_name,
-						faction_id
-					) :
-					Strings::Commify(sep->arg[2])
-				)
-			);
+			auto npc_faction_id   = Strings::ToInt(sep->arg[2]);
+			const auto f = zone->GetNPCFaction(npc_faction_id);
+			if (f) {
+				auto faction_id = f->primaryfaction;
+				auto faction_name = content_db.GetFactionName(faction_id);
+
+				n.npc_faction_id = npc_faction_id;
+				d = fmt::format(
+					"{} is now using Faction {}.",
+					npc_id_string,
+					(
+						!faction_name.empty() ?
+						fmt::format(
+							"{} ({})",
+							faction_name,
+							faction_id
+						) :
+						Strings::Commify(sep->arg[2])
+					)
+				);
+			}
+			else {
+				c->Message(Chat::White, "Need to provide a valid, existing, npc_faction_id");
+				return;
+			}
 		} else {
-			c->Message(Chat::White, "Usage: #npcedit faction [Faction ID] - Sets an NPC's Faction ID");
+			c->Message(Chat::White, "Usage: #npcedit faction [npc_faction_id] - Sets an NPC's npc Faction ID (not primary faction) but lookup into table.");
 			return;
 		}
 	} else if (!strcasecmp(sep->arg[1], "adventure_template_id")) {
@@ -1083,6 +1092,22 @@ void command_npcedit(Client *c, const Seperator *sep)
 			);
 			return;
 		}
+	} else if (!strcasecmp(sep->arg[1], "emoteid")) {
+		if (sep->IsNumber(2)) {
+			const uint32 emote_id = Strings::ToUnsignedInt(sep->arg[2]);
+			n.emoteid = emote_id;
+			d = fmt::format(
+				"{} now has an Emote ID of {}.",
+				npc_id_string,
+				Strings::Commify(emote_id)
+			);
+		} else {
+			c->Message(
+				Chat::White,
+				"Usage: #npcedit emoteid [Emote ID] - Sets an NPC's Emote ID"
+			);
+			return;
+		}
 	} else if (!strcasecmp(sep->arg[1], "spellscale")) {
 		if (sep->IsNumber(2)) {
 			auto spell_scale = Strings::ToUnsignedInt(sep->arg[2]);
@@ -1620,6 +1645,31 @@ void command_npcedit(Client *c, const Seperator *sep)
 			);
 			return;
 		}
+	} else if (!strcasecmp(sep->arg[1], "set_grid")) {
+		if (sep->IsNumber(2)) {
+			const uint32 grid_id = Strings::ToUnsignedInt(sep->arg[2]);
+			if (grid_id) {
+				d = fmt::format(
+					"{} now has a Grid ID of {} on Spawn Group ID {}.",
+					npc_id_string,
+					grid_id,
+					Strings::Commify(std::to_string(t->GetSpawnGroupId()))
+				);
+				auto query = fmt::format(
+					"UPDATE spawn2 SET pathgrid = {} WHERE spawngroupID = {} AND version = {}",
+					grid_id,
+					t->GetSpawnGroupId(),
+					zone->GetInstanceVersion()
+				);
+				content_db.QueryDatabase(query);
+			} else {
+				c->Message(Chat::White, "Grid ID must be greater than 0.");
+				return;
+			}
+		} else {
+			c->Message(Chat::White, "Usage: #npcedit set_grid [Grid ID] - Sets an NPC's Grid ID");
+			return;
+		}
 	} else {
 		SendNPCEditSubCommands(c);
 		return;
@@ -1711,6 +1761,7 @@ void SendNPCEditSubCommands(Client *c)
 	c->Message(Chat::White, "Usage: #npcedit version [Version] - Sets an NPC's Version");
 	c->Message(Chat::White, "Usage: #npcedit maxlevel [Max Level] - Sets an NPC's Maximum Level");
 	c->Message(Chat::White, "Usage: #npcedit scalerate [Scale Rate] - Sets an NPC's Scaling Rate [50 = 50%, 100 = 100%, 200 = 200%]");
+	c->Message(Chat::White, "Usage: #npcedit emoteid [Emote ID] - Sets an NPC's Emote ID");
 	c->Message(Chat::White, "Usage: #npcedit spellscale [Scale Rate] - Sets an NPC's Spell Scaling Rate [50 = 50%, 100 = 100%, 200 = 200%]");
 	c->Message(Chat::White, "Usage: #npcedit healscale [Scale Rate] - Sets an NPC's Heal Scaling Rate [50 = 50%, 100 = 100%, 200 = 200%]");
 	c->Message(Chat::White, "Usage: #npcedit no_target [Flag] - Sets an NPC's No Target Hotkey Flag [0 = Not Targetable with Target Hotkey, 1 = Targetable with Target Hotkey]");
@@ -1742,4 +1793,5 @@ void SendNPCEditSubCommands(Client *c)
 	c->Message(Chat::White, "Usage: #npcedit keeps_sold_items [Flag] - Sets an NPC's Keeps Sold Items Flag [0 = False, 1 = True]");
 	c->Message(Chat::White, "Usage: #npcedit setanimation [Animation ID] - Sets an NPC's Animation on Spawn (Stored in spawn2 table)");
 	c->Message(Chat::White, "Usage: #npcedit respawntime [Respawn Time] - Sets an NPC's Respawn Timer in Seconds (Stored in spawn2 table)");
+	c->Message(Chat::White, "Usage: #npcedit set_grid [Grid ID] - Sets an NPC's Grid ID");
 }
