@@ -1623,6 +1623,33 @@ void Mob::MakeSpawnUpdate(PlayerPositionUpdateServer_Struct* spu) {
 	spu->delta_heading = FloatToEQ10(m_Delta.w);
 }
 
+void Mob::SendCharacterSheet(Client* c)
+{
+	if (!IsOfClientBot()) {
+		return;
+	}
+	std::string charactersheet;
+	charactersheet += "CHARACTER SHEET\r\n";
+	charactersheet += "HP: " + Strings::Commify(GetHP()) + "/" + Strings::Commify(GetMaxHP()) + " (R" + Strings::Commify(CastToClient()->CalcHPRegen(false)) + "/" + Strings::Commify(CastToClient()->CalcHPRegenCap()) + ")\r\n";
+	charactersheet += "MANA: " + Strings::Commify(GetMana()) + "/" + Strings::Commify(GetMaxMana()) + " (R" + Strings::Commify(CastToClient()->CalcManaRegen(false)) + "/" + Strings::Commify(CastToClient()->CalcManaRegenCap()) + ")\r\n";
+	charactersheet += "END: " + Strings::Commify(GetEndurance()) + "/" + Strings::Commify(GetMaxEndurance()) + " (R" + Strings::Commify(CastToClient()->CalcEnduranceRegen(false)) + "/" + Strings::Commify(CastToClient()->CalcEnduranceRegenCap()) + ")\r\n";
+	charactersheet += "AC: " + Strings::Commify(GetDisplayAC()) + "\r\n";
+	charactersheet += "ATK: " + Strings::Commify(CastToClient()->GetTotalATK()) + "\r\n";
+	charactersheet += "STR: " + Strings::Commify(GetSTR()) + "/" + Strings::Commify(GetMaxSTR()) + "\r\n";
+	charactersheet += "STA: " + Strings::Commify(GetSTA()) + "/" + Strings::Commify(GetMaxSTA()) + "\r\n";
+	charactersheet += "AGI: " + Strings::Commify(GetAGI()) + "/" + Strings::Commify(GetMaxAGI()) + "\r\n";
+	charactersheet += "DEX: " + Strings::Commify(GetDEX()) + "/" + Strings::Commify(GetMaxDEX()) + "\r\n";
+	charactersheet += "INT: " + Strings::Commify(GetINT()) + "/" + Strings::Commify(GetMaxINT()) + "\r\n";
+	charactersheet += "WIS: " + Strings::Commify(GetWIS()) + "/" + Strings::Commify(GetMaxWIS()) + "\r\n";
+	charactersheet += "CHA: " + Strings::Commify(GetCHA()) + "/" + Strings::Commify(GetMaxCHA()) + "\r\n";
+	charactersheet += "MR: " + Strings::Commify(GetMR()) + "/" + Strings::Commify(GetMaxMR()) + "\r\n";
+	charactersheet += "PR: " + Strings::Commify(GetPR()) + "/" + Strings::Commify(GetMaxPR()) + "\r\n";
+	charactersheet += "DR: " + Strings::Commify(GetDR()) + "/" + Strings::Commify(GetMaxDR()) + "\r\n";
+	charactersheet += "FR: " + Strings::Commify(GetFR()) + "/" + Strings::Commify(GetMaxFR()) + "\r\n";
+	charactersheet += "CR: " + Strings::Commify(GetCR()) + "/" + Strings::Commify(GetMaxCR()) + "\r\n";
+	c->ClientSendCharacterSheet(this, charactersheet.c_str());
+}
+
 void Mob::SendStatsWindow(Client* c, bool use_window)
 {
 	if (!IsOfClientBot()) {

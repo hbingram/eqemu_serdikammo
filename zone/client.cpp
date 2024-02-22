@@ -4111,6 +4111,24 @@ void Client::SendFullPopup(
 	safe_delete(outapp);
 }
 
+void Client::ClientSendCharacterSheet(Mob* target, const char* text)
+{
+	va_list argptr;
+	char    buffer[4096];
+	//va_start(argptr, text);
+	vsnprintf(buffer, sizeof(buffer), text, argptr);
+	//va_end(argptr);
+	size_t len = strlen(buffer);
+	auto  app = new EQApplicationPacket(OP_OnLevelMessage, sizeof(OnLevelMessage_Struct));
+	auto* olms = (OnLevelMessage_Struct*)app->pBuffer;
+	if (strlen(text) > (sizeof(olms->Text) - 1)) {
+		safe_delete(app);
+		return;
+	}
+	memcpy(olms->Text, buffer, len + 1);
+	FastQueuePacket(&app);
+}
+
 void Client::SendWindow(
 	uint32 button_one_id,
 	uint32 button_two_id,
