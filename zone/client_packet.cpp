@@ -449,7 +449,7 @@ int Client::HandlePacket(const EQApplicationPacket *app)
 	auto o = eqs->GetOpcodeManager();
 
 	/* BRYANT083123-START-: keep from logging OP_ClientUpdate and OP_FloatListThing */
-	if ((app->GetOpcode() != OP_ClientUpdate) && (app->GetOpcode() != OP_FloatListThing))
+	if ( true /*(app->GetOpcode() != OP_ClientUpdate) /* && (app->GetOpcode() != OP_FloatListThing) */)
 	{
 		LogPacketClientServer(
 			"[{}] [{:#06x}] Size [{}] {}",
@@ -11712,6 +11712,16 @@ void Client::Handle_OP_PopupResponse(const EQApplicationPacket *app)
 			return;
 			break;
 
+		case POPUPID_UPDATE_SHOWSTATSWINDOW + 10:
+			if (GetTarget() && GetTarget()->IsOfClientBot()) {
+				GetTarget()->SendCharacterSheet(this);
+			}
+			else {
+				SendCharacterSheet(this);
+			}
+			return;
+			break;
+
 		case POPUPID_DIAWIND_ONE:
 			if (EntityVariableExists(DIAWIND_RESPONSE_ONE_KEY)) {
 				response = GetEntityVariable(DIAWIND_RESPONSE_ONE_KEY);
@@ -14464,7 +14474,7 @@ void Client::Handle_OP_SpawnAppearance(const EQApplicationPacket *app)
 			SetFeigned(false);
 		}
 		/* BRYANT121223-START-: Support spellwheel */
-		else if (sa->parameter == ANIM_CAST) {
+		else if (sa->parameter == Animation::Casting) {
 			SetAppearance(eaCasting);
 			playeraction = 5;
 			SetFeigned(false);

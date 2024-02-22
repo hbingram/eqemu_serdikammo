@@ -1,4 +1,3 @@
-
 /*	EQEMu: Everquest Server Emulator
 	Copyright (C) 2001-2016 EQEMu Development Team (http://eqemu.org)
 
@@ -841,6 +840,7 @@ public:
 	char GetCasterClass() const;
 	uint8 GetArchetype() const;
 	void SetZone(uint32 zone_id, uint32 instance_id);
+	void SendCharacterSheet(Client* c);
 	void SendStatsWindow(Client* c, bool use_window);
 	void ShowStats(Client* client);
 	void ShowBuffs(Client* c);
