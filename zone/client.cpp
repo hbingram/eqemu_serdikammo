@@ -4111,7 +4111,8 @@ void Client::SendFullPopup(
 	safe_delete(outapp);
 }
 
-void Client::ClientSendCharacterSheet(Mob* target, const char* text)
+/* BRYANT022324-START-: character sheet */
+void Client::ClientSendCharacterSheet(Mob* target, const char* title, const char* text)
 {
 	va_list argptr;
 	char    buffer[4096];
@@ -4125,9 +4126,11 @@ void Client::ClientSendCharacterSheet(Mob* target, const char* text)
 		safe_delete(app);
 		return;
 	}
+	strcpy(olms->Title, title);
 	memcpy(olms->Text, buffer, len + 1);
 	FastQueuePacket(&app);
 }
+/* BRYANT022324-END- */
 
 void Client::SendWindow(
 	uint32 button_one_id,

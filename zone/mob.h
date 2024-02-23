@@ -840,7 +840,9 @@ public:
 	char GetCasterClass() const;
 	uint8 GetArchetype() const;
 	void SetZone(uint32 zone_id, uint32 instance_id);
+	/* BRYANT022324-START-: character sheet */
 	void SendCharacterSheet(Client* c);
+	/* BRYANT022324-END- */
 	void SendStatsWindow(Client* c, bool use_window);
 	void ShowStats(Client* client);
 	void ShowBuffs(Client* c);
