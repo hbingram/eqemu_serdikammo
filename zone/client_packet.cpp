@@ -11711,7 +11711,8 @@ void Client::Handle_OP_PopupResponse(const EQApplicationPacket *app)
 			}
 			return;
 			break;
-
+		
+		/* BRYANT022324-START-: character sheet */
 		case POPUPID_UPDATE_SHOWSTATSWINDOW + 10:
 			if (GetTarget() && GetTarget()->IsOfClientBot()) {
 				GetTarget()->SendCharacterSheet(this);
@@ -11721,6 +11722,7 @@ void Client::Handle_OP_PopupResponse(const EQApplicationPacket *app)
 			}
 			return;
 			break;
+		/* BRYANT022324-END- */
 
 		case POPUPID_DIAWIND_ONE:
 			if (EntityVariableExists(DIAWIND_RESPONSE_ONE_KEY)) {
