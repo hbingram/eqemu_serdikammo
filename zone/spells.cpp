@@ -221,18 +221,12 @@ bool Mob::CastSpell(uint16 spell_id, uint16 target_id, CastingSlot slot,
 		BuffFadeByEffect(SE_NegateIfCombat);
 	}
 
-	// check to see if target is a caster mob before performing a mana tap
 	if(GetTarget() && IsManaTapSpell(spell_id)) {
-		if (
-			GetTarget()->GetCasterClass() == 'N' &&
-			(
-				!RuleB(Spells, ManaTapsRequireNPCMana) ||
-				(
-					RuleB(Spells, ManaTapsRequireNPCMana) &&
-					GetTarget()->GetMana() == 0
-				)
-			)
-		) {
+		// If melee, block if ManaTapsOnAnyClass rule is false
+		// if caster, block if ManaTapsRequireNPCMana and no mana
+		bool melee_block = !RuleB(Spells, ManaTapsOnAnyClass);
+		bool caster_block = (GetTarget()->GetCasterClass() != 'N' && RuleB(Spells, ManaTapsRequireNPCMana) &&  GetTarget()->GetMana() == 0);
+		if (melee_block || caster_block) {
 			InterruptSpell(TARGET_NO_MANA, 0x121, spell_id);
 			return false;
 		}
@@ -407,7 +401,7 @@ bool Mob::DoCastSpell(uint16 spell_id, uint16 target_id, CastingSlot slot,
 			spell.target_type == ST_Beam
 		) && target_id == 0
 	) {
-		LogSpells("Spell [{}] auto-targeted the caster. Group? [{}], target type [{}]", spell_id, IsGroupSpell(spell_id), spell.target_type);
+		LogSpells("Spell [{}] auto-targeted the caster. Group? [{}], target type [{}]", spell_id, IsGroupSpell(spell_id), static_cast<int>(spell.target_type));
 		target_id = GetID();
 	}
 
@@ -2394,7 +2388,7 @@ bool Mob::DetermineSpellTargets(uint16 spell_id, Mob *&spell_target, Mob *&ae_ce
 
 		default:
 		{
-			LogSpells("I dont know Target Type: [{}]  Spell: ([{}]) [{}]", spells[spell_id].target_type, spell_id, spells[spell_id].name);
+			LogSpells("I dont know Target Type: [{}]  Spell: ([{}]) [{}]", static_cast<int>(spells[spell_id].target_type), spell_id, spells[spell_id].name);
 			Message(0, "I dont know Target Type: %d   Spell: (%d) %s", spells[spell_id].target_type, spell_id, spells[spell_id].name);
 			CastAction = CastActUnknown;
 			break;
@@ -2472,7 +2466,7 @@ bool Mob::SpellFinished(uint16 spell_id, Mob *spell_target, CastingSlot slot, in
 		}
 	}
 
-	LogSpells("Spell [{}]: target type [{}], target [{}], AE center [{}]", spell_id, CastAction, spell_target?spell_target->GetName():"NONE", ae_center?ae_center->GetName():"NONE");
+	LogSpells("Spell [{}]: target type [{}], target [{}], AE center [{}]", spell_id, static_cast<int>(CastAction), spell_target?spell_target->GetName():"NONE", ae_center?ae_center->GetName():"NONE");
 
 	// if a spell has the AEDuration flag, it becomes an AE on target
 	// spell that's recast every 2500 msec for AEDuration msec.

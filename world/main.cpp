@@ -45,6 +45,7 @@
 #include "../common/misc.h"
 #include "client.h"
 #include "worlddb.h"
+#include "wguild_mgr.h"
 
 #ifdef _WINDOWS
 #include <process.h>
@@ -142,8 +143,6 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
-	WorldBoot::CheckForXMLConfigUpgrade();
-
 	Config = WorldConfig::get();
 
 	LogInfo("CURRENT_VERSION [{}]", CURRENT_VERSION);
@@ -188,6 +187,11 @@ int main(int argc, char **argv)
 		console = std::make_unique<EQ::Net::ConsoleServer>(Config->TelnetIP, Config->TelnetTCPPort);
 		RegisterConsoleFunctions(console);
 	}
+
+	content_service.SetDatabase(&database)
+		->SetContentDatabase(&content_db)
+		->SetExpansionContext()
+		->ReloadContentFlags();
 
 	std::unique_ptr<EQ::Net::ServertalkServer> server_connection;
 	server_connection = std::make_unique<EQ::Net::ServertalkServer>();
@@ -411,6 +415,7 @@ int main(int argc, char **argv)
 		event_scheduler.Process(&zoneserver_list);
 
 		client_list.Process();
+		guild_mgr.Process();
 
 		if (player_event_process_timer.Check()) {
 			player_event_logs.Process();

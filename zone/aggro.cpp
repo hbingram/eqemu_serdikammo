@@ -343,7 +343,7 @@ void NPC::DescribeAggro(Client *to_who, Mob *mob, bool verbose) {
 				"{} does not have low enough faction, their Faction Level is {} ({}).",
 				to_who->GetTargetDescription(mob),
 				FactionValueToString(faction_value),
-				faction_value
+				static_cast<int>(faction_value)
 			).c_str()
 		);
 		return;
@@ -556,7 +556,7 @@ bool Mob::CheckWillAggro(Mob *mob) {
 	LogAggro("Is In zone?:[{}]\n", mob->InZone());
 	LogAggro("Dist^2: [{}]\n", distance_squared);
 	LogAggro("Range^2: [{}]\n", aggro_range_squared);
-	LogAggro("Faction: [{}]\n", faction_value);
+	LogAggro("Faction: [{}]\n", static_cast<int>(faction_value));
 	LogAggro("AlwaysAggroFlag: [{}]\n", AlwaysAggro());
 	LogAggro("Int: [{}]\n", GetINT());
 	LogAggro("Con: [{}]\n", GetLevelCon(mob->GetLevel()));
@@ -621,28 +621,38 @@ bool Mob::IsAttackAllowed(Mob *target, bool isSpellAttack)
 //	NPC *npc1, *npc2;
 	int reverse;
 
-	if(!zone->CanDoCombat())
-		return false;
-
-	// some special cases
-	if(!target)
-		return false;
-
-	if(this == target)	// you can attack yourself
-		return true;
-
-	if(target->GetSpecialAbility(NO_HARM_FROM_CLIENT)){
+	if (!zone->CanDoCombat()) {
 		return false;
 	}
 
-	if (target->GetSpecialAbility(IMMUNE_DAMAGE_CLIENT) && IsClient())
+	// some special cases
+	if (!target) {
 		return false;
+	}
 
-	if (target->GetSpecialAbility(IMMUNE_DAMAGE_NPC) && IsNPC())
-		return false;
+	if (this == target) {    // you can attack yourself
+		return true;
+	}
 
-	if (target->IsHorse())
+	if (target->GetSpecialAbility(NO_HARM_FROM_CLIENT)) {
 		return false;
+	}
+
+	if (IsBot() && target->GetSpecialAbility(IMMUNE_DAMAGE_BOT)) {
+		return false;
+	}
+
+	if (IsClient() && target->GetSpecialAbility(IMMUNE_DAMAGE_CLIENT)) {
+		return false;
+	}
+
+	if (IsNPC() && target->GetSpecialAbility(IMMUNE_DAMAGE_NPC)) {
+		return false;
+	}
+
+	if (target->IsHorse()) {
+		return false;
+	}
 
 	// can't damage own pet (applies to everthing)
 	Mob *target_owner = target->GetOwner();

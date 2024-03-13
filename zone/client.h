@@ -718,8 +718,16 @@ public:
 
 	inline bool IsInAGuild() const { return(guild_id != GUILD_NONE && guild_id != 0); }
 	inline bool IsInGuild(uint32 in_gid) const { return(in_gid == guild_id && IsInAGuild()); }
+	inline bool GetGuildListDirty() { return guild_dirty; }
+	inline void SetGuildListDirty(bool state) { guild_dirty = state; }
 	inline uint32 GuildID() const { return guild_id; }
 	inline uint8 GuildRank() const { return guildrank; }
+	inline bool GuildTributeOptIn() const { return guild_tribute_opt_in; }
+	void SetGuildTributeOptIn(bool state);
+	void SendGuildTributeDonateItemReply(GuildTributeDonateItemRequest_Struct* in, uint32 favor);
+	void SendGuildTributeDonatePlatReply(GuildTributeDonatePlatRequest_Struct* in, uint32 favor);
+	void SetGuildRank(uint32 rank);
+	void SetGuildID(uint32 guild_id);
 	void SendGuildMOTD(bool GetGuildMOTDReply = false);
 	void SendGuildURL();
 	void SendGuildChannel();
@@ -729,6 +737,24 @@ public:
 	void SendGuildList();
 	void SendGuildJoin(GuildJoin_Struct* gj);
 	void RefreshGuildInfo();
+	void SendGuildRankNames();
+	void SendGuildTributeDetails(uint32 tribute_id, uint32 tier);
+	void DoGuildTributeUpdate();
+	void SendGuildActiveTributes(uint32 guild_id);
+	void SendGuildFavorAndTimer(uint32 guild_id);
+	void SendGuildTributeOptInToggle(const GuildTributeMemberToggle* in);
+	void RequestGuildActiveTributes(uint32 guild_id);
+	void RequestGuildFavorAndTimer(uint32 guild_id);
+	void SendGuildMembersList();
+	void SendGuildMemberAdd(uint32 guild_id, uint32 level, uint32 _class, uint32 rank, uint32 guild_show, uint32 zone_id, std::string player_name);
+	void SendGuildMemberRename(uint32 guild_id, std::string player_name, std::string new_player_name);
+	void SendGuildMemberDelete(uint32 guild_id, std::string player_name);
+	void SendGuildMemberLevel(uint32 guild_id, uint32 level, std::string player_name);
+	void SendGuildMemberRankAltBanker(uint32 guild_id, uint32 rank, std::string player_name, bool alt, bool banker);
+	void SendGuildMemberPublicNote(uint32 guild_id, std::string player_name, std::string public_note);
+	void SendGuildMemberDetails(uint32 guild_id, uint32 zone_id, uint32 offline_mode, std::string player_name);
+	void SendGuildRenameGuild(uint32 guild_id, std::string new_guild_name);
+	void SendGuildDeletePacket(uint32 guild_id);
 
 	uint8 GetClientMaxLevel() const { return client_max_level; }
 	void SetClientMaxLevel(uint8 max_level) { client_max_level = max_level; }
@@ -907,8 +933,9 @@ public:
 	void ResetAlternateAdvancementTimers();
 	void ResetOnDeathAlternateAdvancement();
 
-	void SetAAPoints(uint32 points) { m_pp.aapoints = points; SendAlternateAdvancementStats(); }
+	void SetAAPoints(uint32 points);
 	void AddAAPoints(uint32 points);
+	bool RemoveAAPoints(uint32 points);
 	int GetAAPoints() { return m_pp.aapoints; }
 	int GetSpentAA() { return m_pp.aapoints_spent; }
 	uint32 GetRequiredAAExperience();
@@ -1064,7 +1091,7 @@ public:
 	void SetPEQZoneFlag(uint32 zone_id);
 
 	bool CanFish();
-	void GoFish();
+	void GoFish(bool guarantee = false, bool use_bait = true);
 	void ForageItem(bool guarantee = false);
 	//Calculate vendor price modifier based on CHA: (reverse==selling)
 	float CalcPriceMod(Mob* other = 0, bool reverse = false);
@@ -1484,6 +1511,7 @@ public:
 	void GuildBankAck();
 	void GuildBankDepositAck(bool Fail, int8 action);
 	inline bool IsGuildBanker() { return GuildBanker; }
+	inline void SetGuildBanker(bool banker) { GuildBanker = banker; }
 	void ClearGuildBank();
 	void SendGroupCreatePacket();
 	void SendGroupLeaderChangePacket(const char *LeaderName);
@@ -1785,7 +1813,9 @@ private:
 	char lskey[30];
 	int16 admin;
 	uint32 guild_id;
-	uint8 guildrank; // player's rank in the guild, 0-GUILD_MAX_RANK
+	uint8 guildrank; // player's rank in the guild, 1- Leader 8 Recruit
+	bool guild_tribute_opt_in;
+	bool guild_dirty{ true };	//used to control add/delete opcodes due to client bug in Ti thru RoF2
 	bool GuildBanker;
 	uint16 duel_target;
 	bool duelaccepted;
@@ -2050,7 +2080,7 @@ public:
 		booSpawnMessageSay,
 		booSpawnMessageTell,
 		booSpawnMessageClassSpecific,
-		booAltCombat,
+		booUnused,
 		booAutoDefend,
 		booBuffCounter,
 		booMonkWuMessage,

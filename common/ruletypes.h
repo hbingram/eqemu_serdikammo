@@ -28,6 +28,9 @@
 #ifndef RULE_BOOL
 #define RULE_BOOL(cat, rule, default_value, notes)
 #endif
+#ifndef RULE_STRING
+#define RULE_STRING(cat, rule, default_value, notes)
+#endif
 #ifndef RULE_CATEGORY_END
 #define RULE_CATEGORY_END()
 #endif
@@ -48,10 +51,10 @@ RULE_BOOL(Character, DeathKeepLevel, false, "Players can not drop below 0% exper
 RULE_BOOL(Character, UseDeathExpLossMult, false, "Setting to control whether DeathExpLossMultiplier or the code default is used: (Level x Level / 18.0) x 12000")
 RULE_BOOL(Character, UseOldRaceRezEffects, false, "Older clients had ID 757 for races with high starting STR, but it doesn't seem used anymore")
 RULE_INT(Character, CorpseDecayTime, 604800000, "Time after which the corpse decays (milliseconds) DEFAULT: 604800000 (7 Days)")
-RULE_INT( Character, EmptyCorpseDecayTime, 10800000, "Time after which an empty corpse decays (milliseconds) DEFAULT: 10800000 (3 Hours)")
+RULE_INT(Character, EmptyCorpseDecayTime, 10800000, "Time after which an empty corpse decays (milliseconds) DEFAULT: 10800000 (3 Hours)")
 RULE_INT(Character, CorpseResTime, 10800000, "Time after which the corpse can no longer be resurrected (milliseconds) DEFAULT: 10800000 (3 Hours)")
-RULE_INT( Character, DuelCorpseResTime, 600000, "Time before cant res corpse after a duel (milliseconds) DEFAULT: 600000 (10 Minutes)")
-RULE_INT( Character, CorpseOwnerOnlineTime, 30000, "How often corpse will check if its owner is online DEFAULT: 30000 (30 Seconds)")
+RULE_INT(Character, DuelCorpseResTime, 600000, "Time before cant res corpse after a duel (milliseconds) DEFAULT: 600000 (10 Minutes)")
+RULE_INT(Character, CorpseOwnerOnlineTime, 30000, "How often corpse will check if its owner is online DEFAULT: 30000 (30 Seconds)")
 RULE_BOOL(Character, LeaveCorpses, true, "Setting whether you leave a corpse behind")
 RULE_BOOL(Character, LeaveNakedCorpses, false, "Setting whether you leave a corpse without items")
 RULE_INT(Character, MaxDraggedCorpses, 2, "Maximum number of corpses you can drag at once")
@@ -245,6 +248,10 @@ RULE_INT(Guild, PlayerCreationLimit, 1, "Only allow use of the UF+ window if the
 RULE_INT(Guild, PlayerCreationRequiredStatus, 0, "Required status to create a guild")
 RULE_INT(Guild, PlayerCreationRequiredLevel, 0, "Required level of the player attempting to create the guild")
 RULE_INT(Guild, PlayerCreationRequiredTime, 0, "Time needed online on the account to create a guild (in minutes)")
+RULE_INT(Guild, TributeTime, 600000, "Time in ms for guild tributes.  Default is 10 mins.")
+RULE_INT(Guild, TributeTimeRefreshInterval, 180000, "Time in ms to send all guild members a Tribute Time refresh. Default is 3 mins.")
+RULE_INT(Guild, TributePlatConversionRate, 10, "The conversion rate of platinum donations.  Default is 10 guild favor to 1 platinum.")
+RULE_BOOL(Guild, UseCharacterMaxLevelForGuildTributes, true, "Guild Tributes will adhere to Character:MaxLevel.  Default is true.")
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(Skills)
@@ -320,6 +327,8 @@ RULE_INT(World, MaximumQuestErrors, 30, "Changes the maximum number of quest err
 RULE_INT(World, BootHour, 0, "Sets the in-game hour world will set when it first boots. 0-24 are valid options, where 0 disables this rule")
 RULE_BOOL(World, UseItemLinksForKeyRing, false, "Uses item links for Key Ring Listing instead of item name")
 RULE_BOOL(World, UseOldShadowKnightClassExport, true, "Disable to have Shadowknight show as Shadow Knight (live-like)")
+RULE_STRING(World, IPExemptionZones, "", "Comma-delimited list of zones to exclude from IP-limit checks. Empty string to disable.")
+RULE_STRING(World, MOTD, "", "Server MOTD sent on login, change from empty to have this be used instead of variables table 'motd' value")
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(Zone)
@@ -491,6 +500,7 @@ RULE_BOOL(Spells, EvacClearCharmPet, false, "Enable to have evac in zone clear c
 RULE_BOOL(Spells, ManaTapsRequireNPCMana, false, "Enabling will require target to have mana to tap. Default off as many npc's are caster class with 0 mana and need fixed.")
 RULE_INT(Spells, HarmTouchCritRatio, 200, "Harmtouch crit bonus, on top of BaseCritRatio")
 RULE_BOOL(Spells, UseClassicSpellFocus, false, "Enabling will tell the server to handle random focus damage as classic spell imports lack the limit values.")
+RULE_BOOL(Spells, ManaTapsOnAnyClass, false, "Enabling this will allow you to cast mana taps on any class, this will bypass ManaTapsRequireNPCMana rule.")
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(Combat)
@@ -517,6 +527,7 @@ RULE_REAL(Combat, BaseProcChance, 0.035, "Base chance for procs")
 RULE_REAL(Combat, ProcDexDivideBy, 11000, "Divisor for the probability of a proc increased by dexterity")
 RULE_INT(Combat, MinRangedAttackDist, 25, "Minimum Distance to use Ranged Attacks")
 RULE_BOOL(Combat, ArcheryBonusRequiresStationary, true, "does the 2x archery bonus chance require a stationary npc")
+RULE_INT(Combat, ArcheryBonusLevelRequirement, 51, "Level requirement when the 2x archery bonus will be enabled. The default is 51.")
 RULE_REAL(Combat, ArcheryNPCMultiplier, 1.0, "Value is multiplied by the regular dmg to get the archery dmg")
 RULE_BOOL(Combat, AssistNoTargetSelf, true, "When assisting a target that does not have a target: true = target self, false = leave target as was before assist (false = live like)")
 RULE_INT(Combat, MaxRampageTargets, 3, "Maximum number of people hit with rampage")
@@ -529,6 +540,8 @@ RULE_REAL(Combat, DefProcPerMinAgiContrib, 0.075, "How much agility contributes 
 RULE_INT(Combat, NPCFlurryChance, 20, "Chance for NPC to flurry")
 RULE_BOOL(Combat, TauntOverLevel, 1, "Allows you to taunt NPC's over warriors level")
 RULE_INT(Combat, TauntOverAggro, 0, "+ amount over hate_top it will add before any bonus hate.")
+RULE_INT(Combat, TauntChanceBonus, 0, "Bonus to taunt chance")
+RULE_BOOL(Combat, ClassicTauntSystem, false, "Enable to use the pre 2006 taunt system.")
 RULE_REAL(Combat, TauntSkillFalloff, 0.33, "For every taunt skill point that's not maxed you lose this percentage chance to taunt")
 RULE_BOOL(Combat, EXPFromDmgShield, false, "Determine if damage from a damage shield counts for experience gain")
 RULE_INT(Combat, QuiverHasteCap, 1000, "Quiver haste cap 1000 on live for a while, currently 700 on live")
@@ -563,10 +576,12 @@ RULE_BOOL(Combat, NPCsUseFrontalStunImmunityClasses, false, "Enable or disable N
 RULE_INT(Combat, FrontalStunImmunityRaces, 512, "Bitmask for Races than have frontal stun immunity, Ogre (512) only by default.")
 RULE_BOOL(Combat, NPCsUseFrontalStunImmunityRaces, true, "Enable or disable NPCs using frontal stun immunity Races from Combat:FrontalStunImmunityRaces, true by default.")
 RULE_BOOL(Combat, AssassinateOnlyHumanoids, true, "Enable or disable Assassinate only being allowed on Humanoids, true by default.")
+RULE_INT(Combat, AssassinateLevelRequirement, 60, "Level requirement to enable assassinate attempts on backstabs. The default is 60.")
 RULE_BOOL(Combat, HeadshotOnlyHumanoids, true, "Enable or disable Headshot only being allowed on Humanoids, true by default.")
 RULE_BOOL(Combat, EnableWarriorShielding, true, "Enable or disable Warrior Shielding Ability (/shield), true by default.")
 RULE_BOOL(Combat, BackstabIgnoresElemental, false, "Enable or disable Elemental weapon damage affecting backstab damage, false by default.")
 RULE_BOOL(Combat, BackstabIgnoresBane, false, "Enable or disable Bane weapon damage affecting backstab damage, false by default.")
+RULE_INT(Combat, DoubleBackstabLevelRequirement, 55, "Level requirement to enable double backstab attempts. The default is 55.")
 RULE_BOOL(Combat, SummonMeleeRange, true, "Enable or disable summoning of a player when already in melee range of the summoner.")
 RULE_BOOL(Combat, WaterMatchRequiredForAutoFireLoS, true, "Enable/Disable the requirement of both the attacker/victim being both in or out of water for AutoFire LoS to pass.")
 RULE_INT(Combat, ExtraAllowedKickClassesBitmask, 0, "Bitmask for allowing extra classes beyond Warrior, Ranger, Beastlord, and Berserker to kick, No Extra Classes (0) by default")
@@ -688,7 +703,6 @@ RULE_BOOL(Bots, BotGroupXP, false, "Determines whether client gets experience fo
 RULE_BOOL(Bots, BotLevelsWithOwner, false, "Auto-updates spawned bots as owner levels/de-levels (false is original behavior)")
 RULE_INT(Bots, BotCharacterLevel, 0, "If level is greater that value player can spawn bots if BotCharacterLevelEnabled is true")
 RULE_INT(Bots, CasterStopMeleeLevel, 13, "Level at which caster bots stop melee attacks")
-RULE_BOOL(Bots, AllowOwnerOptionAltCombat, true, "When option is enabled, bots will use an auto-/shared-aggro combat model")
 RULE_BOOL(Bots, AllowOwnerOptionAutoDefend, true, "When option is enabled, bots will defend their owner on enemy aggro")
 RULE_REAL(Bots, LeashDistance, 562500.0f, "Distance a bot is allowed to travel from leash owner before being pulled back (squared value)")
 RULE_BOOL(Bots, AllowApplyPoisonCommand, true, "Allows the use of the bot command 'applypoison'")
@@ -885,7 +899,7 @@ RULE_INT(Expansion, AutoGrantAAExpansion, -1, "Expansion to auto grant AAs up to
 RULE_CATEGORY_END()
 
 RULE_CATEGORY(Instances)
-RULE_INT(Instances, ReservedInstances, 30, "Number of instance IDs which are reserved for globals. This value should not be changed while a server is running")
+RULE_INT(Instances, ReservedInstances, 100, "Number of instance IDs which are reserved for globals. This value should not be changed while a server is running")
 RULE_BOOL(Instances, RecycleInstanceIds, true, "Setting whether free instance IDs should be recycled to prevent them from gradually running out at 32k")
 RULE_INT(Instances, GuildHallExpirationDays, 90, "Amount of days before a Guild Hall instance expires")
 RULE_CATEGORY_END()
@@ -945,4 +959,5 @@ RULE_CATEGORY_END()
 #undef RULE_INT
 #undef RULE_REAL
 #undef RULE_BOOL
+#undef RULE_STRING
 #undef RULE_CATEGORY_END

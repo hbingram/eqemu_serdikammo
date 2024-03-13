@@ -355,9 +355,7 @@ bool Zone::IsSpecialBindLocation(const glm::vec4& location)
 
 //this also just loads into entity_list, not really into zone
 bool Zone::LoadGroundSpawns() {
-	GroundSpawns g;
-
-	memset(&g, 0, sizeof(g));
+	GroundSpawns g{};
 
 	content_db.LoadGroundSpawns(zoneid, GetInstanceVersion(), &g);
 
@@ -1203,6 +1201,8 @@ bool Zone::Init(bool is_static) {
 	DynamicZone::CacheAllFromDatabase();
 	Expedition::CacheAllFromDatabase();
 
+	guild_mgr.LoadGuilds();
+
 	LogInfo("Loading timezone data");
 	zone_time.setEQTimeZone(content_db.GetZoneTimezone(zoneid, GetInstanceVersion()));
 
@@ -1896,15 +1896,15 @@ void Zone::Repop(bool is_forced)
 		return;
 	}
 
+	if (is_forced) {
+		ClearSpawnTimers();
+	}
+
 	LinkedListIterator<Spawn2 *> iterator(spawn2_list);
 
 	iterator.Reset();
 	while (iterator.MoreElements()) {
 		iterator.RemoveCurrent();
-	}
-
-	if (is_forced) {
-		ClearSpawnTimers();
 	}
 
 	npc_scale_manager->LoadScaleData();
@@ -2647,22 +2647,24 @@ void Zone::ClearSpawnTimers()
 
 	iterator.Reset();
 
-	std::vector<std::string> respawn_ids;
+	std::vector<uint32> respawn_ids;
 
 	while (iterator.MoreElements()) {
-		respawn_ids.emplace_back(std::to_string(iterator.GetData()->GetID()));
+		respawn_ids.emplace_back(iterator.GetData()->spawn2_id);
 
 		iterator.Advance();
 	}
 
-	RespawnTimesRepository::DeleteWhere(
-		database,
-		fmt::format(
-			"`instance_id` = {} AND `id` IN ({})",
-			GetInstanceID(),
-			Strings::Implode(", ", respawn_ids)
-		)
-	);
+	if (!respawn_ids.empty()) {
+		RespawnTimesRepository::DeleteWhere(
+			database,
+			fmt::format(
+				"`instance_id` = {} AND `id` IN ({})",
+				GetInstanceID(),
+				Strings::Join(respawn_ids, ", ")
+			)
+		);
+	}
 }
 
 uint32 Zone::GetSpawnKillCount(uint32 in_spawnid) {
@@ -3163,6 +3165,11 @@ void Zone::ClearEXPModifier(Client* c)
 	exp_modifiers.erase(c->CharacterID());
 }
 
+void Zone::ClearEXPModifierByCharacterID(const uint32 character_id)
+{
+	exp_modifiers.erase(character_id);
+}
+
 float Zone::GetAAEXPModifier(Client* c)
 {
 	const auto& l = exp_modifiers.find(c->CharacterID());
@@ -3175,9 +3182,33 @@ float Zone::GetAAEXPModifier(Client* c)
 	return v.aa_modifier;
 }
 
+float Zone::GetAAEXPModifierByCharacterID(const uint32 character_id)
+{
+	const auto& l = exp_modifiers.find(character_id);
+	if (l == exp_modifiers.end()) {
+		return 1.0f;
+	}
+
+	const auto& v = l->second;
+
+	return v.aa_modifier;
+}
+
 float Zone::GetEXPModifier(Client* c)
 {
 	const auto& l = exp_modifiers.find(c->CharacterID());
+	if (l == exp_modifiers.end()) {
+		return 1.0f;
+	}
+
+	const auto& v = l->second;
+
+	return v.exp_modifier;
+}
+
+float Zone::GetEXPModifierByCharacterID(const uint32 character_id)
+{
+	const auto& l = exp_modifiers.find(character_id);
 	if (l == exp_modifiers.end()) {
 		return 1.0f;
 	}
@@ -3207,6 +3238,26 @@ void Zone::SetAAEXPModifier(Client* c, float aa_modifier)
 	);
 }
 
+void Zone::SetAAEXPModifierByCharacterID(const uint32 character_id, float aa_modifier)
+{
+	auto l = exp_modifiers.find(character_id);
+	if (l == exp_modifiers.end()) {
+		return;
+	}
+
+	auto& m = l->second;
+
+	m.aa_modifier = aa_modifier;
+
+	CharacterExpModifiersRepository::SetEXPModifier(
+		database,
+		character_id,
+		GetZoneID(),
+		GetInstanceVersion(),
+		m
+	);
+}
+
 void Zone::SetEXPModifier(Client* c, float exp_modifier)
 {
 	auto l = exp_modifiers.find(c->CharacterID());
@@ -3221,6 +3272,26 @@ void Zone::SetEXPModifier(Client* c, float exp_modifier)
 	CharacterExpModifiersRepository::SetEXPModifier(
 		database,
 		c->CharacterID(),
+		GetZoneID(),
+		GetInstanceVersion(),
+		m
+	);
+}
+
+void Zone::SetEXPModifierByCharacterID(const uint32 character_id, float exp_modifier)
+{
+	auto l = exp_modifiers.find(character_id);
+	if (l == exp_modifiers.end()) {
+		return;
+	}
+
+	auto& m = l->second;
+
+	m.exp_modifier = exp_modifier;
+
+	CharacterExpModifiersRepository::SetEXPModifier(
+		database,
+		character_id,
 		GetZoneID(),
 		GetInstanceVersion(),
 		m

@@ -3290,6 +3290,18 @@ int Lua_Client::GetEXPPercentage()
 	return self->GetEXPPercentage();
 }
 
+bool Lua_Client::IsInAGuild()
+{
+	Lua_Safe_Call_Bool();
+	return self->IsInAGuild();
+}
+
+bool Lua_Client::RemoveAAPoints(uint32 points)
+{
+	Lua_Safe_Call_Bool();
+	return self->RemoveAAPoints(points);
+}
+
 luabind::scope lua_register_client() {
 	return luabind::class_<Lua_Client, Lua_Mob>("Client")
 	.def(luabind::constructor<>())
@@ -3578,6 +3590,7 @@ luabind::scope lua_register_client() {
 	.def("IsDueling", (bool(Lua_Client::*)(void))&Lua_Client::IsDueling)
 	.def("IsEXPEnabled", (bool(Lua_Client::*)(void))&Lua_Client::IsEXPEnabled)
 	.def("IsGrouped", (bool(Lua_Client::*)(void))&Lua_Client::IsGrouped)
+	.def("IsInAGuild", (bool(Lua_Client::*)(void))&Lua_Client::IsInAGuild)
 	.def("IsLD", (bool(Lua_Client::*)(void))&Lua_Client::IsLD)
 	.def("IsMedding", (bool(Lua_Client::*)(void))&Lua_Client::IsMedding)
 	.def("IsRaidGrouped", (bool(Lua_Client::*)(void))&Lua_Client::IsRaidGrouped)
@@ -3662,6 +3675,7 @@ luabind::scope lua_register_client() {
 	.def("ReadBookByName", (void(Lua_Client::*)(std::string,uint8))&Lua_Client::ReadBookByName)
 	.def("RefundAA", (void(Lua_Client::*)(void))&Lua_Client::RefundAA)
 	.def("ReloadDataBuckets", (bool(Lua_Client::*)(void))&Lua_Client::ReloadDataBuckets)
+	.def("RemoveAAPoints", (bool(Lua_Client::*)(uint32))&Lua_Client::RemoveAAPoints)
 	.def("RemoveAllExpeditionLockouts", (void(Lua_Client::*)(std::string))&Lua_Client::RemoveAllExpeditionLockouts)
 	.def("RemoveAllExpeditionLockouts", (void(Lua_Client::*)(void))&Lua_Client::RemoveAllExpeditionLockouts)
 	.def("RemoveExpeditionLockout", (void(Lua_Client::*)(std::string, std::string))&Lua_Client::RemoveExpeditionLockout)

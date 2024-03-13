@@ -66,10 +66,12 @@ extern volatile bool RunLoops;
 #include "../common/repositories/character_disciplines_repository.h"
 #include "../common/repositories/character_data_repository.h"
 #include "../common/repositories/discovered_items_repository.h"
+#include "../common/repositories/inventory_repository.h"
 #include "../common/repositories/keyring_repository.h"
 #include "../common/events/player_events.h"
 #include "../common/events/player_event_logs.h"
 #include "dialogue_window.h"
+#include "../common/zone_store.h"
 
 
 extern QueryServ* QServ;
@@ -208,6 +210,7 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	lsaccountid = 0;
 	guild_id = GUILD_NONE;
 	guildrank = 0;
+	guild_tribute_opt_in = 0;
 	GuildBanker = false;
 	memset(lskey, 0, sizeof(lskey));
 	strcpy(account_name, "");
@@ -281,6 +284,7 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	PendingSacrifice = false;
 	controlling_boat_id = 0;
 	controlled_mob_id = 0;
+	qGlobals = nullptr;
 
 	if (!RuleB(Character, PerCharacterQglobalMaxLevel) && !RuleB(Character, PerCharacterBucketMaxLevel)) {
 		SetClientMaxLevel(0);
@@ -308,7 +312,6 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	aa_los_them_mob = nullptr;
 	los_status = false;
 	los_status_facing = false;
-	qGlobals = nullptr;
 	HideCorpseMode = HideCorpseNone;
 	PendingGuildInvitation = false;
 
@@ -368,7 +371,6 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	bot_owner_options[booSpawnMessageSay] = false;
 	bot_owner_options[booSpawnMessageTell] = true;
 	bot_owner_options[booSpawnMessageClassSpecific] = true;
-	bot_owner_options[booAltCombat] = RuleB(Bots, AllowOwnerOptionAltCombat);
 	bot_owner_options[booAutoDefend] = RuleB(Bots, AllowOwnerOptionAutoDefend);
 	bot_owner_options[booBuffCounter] = false;
 	bot_owner_options[booMonkWuMessage] = false;
@@ -377,6 +379,7 @@ Client::Client(EQStreamInterface *ieqs) : Mob(
 	SetBotPrecombat(false);
 
 	AI_Init();
+
 }
 
 Client::~Client() {
@@ -534,7 +537,8 @@ void Client::SendZoneInPackets()
 	safe_delete(outapp);
 
 	if (IsInAGuild()) {
-		SendGuildMembers();
+		guild_mgr.UpdateDbMemberOnline(CharacterID(), true);
+		//SendGuildMembers();
 		SendGuildURL();
 		SendGuildChannel();
 		SendGuildLFGuildStatus();
@@ -950,12 +954,13 @@ void Client::ChannelMessageReceived(uint8 chan_num, uint8 language, uint8 lang_s
 	switch(chan_num)
 	{
 	case ChatChannel_Guild: { /* Guild Chat */
-		if (!IsInAGuild())
+		if (!IsInAGuild()) {
 			MessageString(Chat::DefaultText, GUILD_NOT_MEMBER2);	//You are not a member of any guild.
-		else if (!guild_mgr.CheckPermission(GuildID(), GuildRank(), GUILD_SPEAK))
-			Message(0, "Error: You dont have permission to speak to the guild.");
-		else if (!worldserver.SendChannelMessage(this, targetname, chan_num, GuildID(), language, lang_skill, message))
-			Message(0, "Error: World server disconnected");
+		} else if (!guild_mgr.CheckPermission(GuildID(), GuildRank(), GUILD_ACTION_GUILD_CHAT_SPEAK_IN)) {
+			MessageString(Chat::EchoGuild, NO_PROPER_ACCESS);
+		} else if (!worldserver.SendChannelMessage(this, targetname, chan_num, GuildID(), language, lang_skill, message)) {
+			Message(Chat::White, "Error: World server disconnected");
+		}
 		break;
 	}
 	case ChatChannel_Group: { /* Group Chat */
@@ -1775,6 +1780,8 @@ void Client::UpdateWho(uint8 remove)
 	s->ClientVersion = static_cast<unsigned int>(ClientVersion());
 	s->tellsoff      = tellsoff;
 	s->guild_id      = guild_id;
+	s->guild_rank    = guildrank;
+	s->guild_tribute_opt_in = guild_tribute_opt_in;
 	s->LFG           = LFG;
 	if (LFG) {
 		s->LFGFromLevel   = LFGFromLevel;
@@ -2159,7 +2166,8 @@ void Client::FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho)
 	if (!IsInAGuild()) {
 		ns->spawn.guildrank = 0xFF;
 	} else {
-		ns->spawn.guildrank = guild_mgr.GetDisplayedRank(GuildID(), GuildRank(), AccountID());
+		ns->spawn.guildrank = guild_mgr.GetDisplayedRank(GuildID(), GuildRank(), CharacterID());
+		ns->spawn.guild_show = guild_mgr.CheckPermission(GuildID(), GuildRank(), GUILD_ACTION_DISPLAY_GUILD_NAME);
 	}
 	ns->spawn.size			= 0; // Changing size works, but then movement stops! (wth?)
 	ns->spawn.runspeed		= (gmspeed == 0) ? runspeed : 3.125f;
@@ -6320,7 +6328,17 @@ void Client::SendZonePoints()
 			zp->zpe[i].z = data->target_z;
 			zp->zpe[i].heading = data->target_heading;
 			zp->zpe[i].zoneid = data->target_zone_id;
-			zp->zpe[i].zoneinstance = data->target_zone_instance;
+
+			// if the target zone is the same as the current zone, use the instance of the current zone
+			// if we don't use the same instance_id that the client was sent, the client will forcefully
+			// issue a zone change request when they should be simply moving to a different point in the same zone
+			// because the client will think the zone point target is different from the current instance
+			auto target_instance = data->target_zone_instance;
+			if (data->target_zone_id == zone->GetZoneID() && data->target_zone_instance == 0) {
+				target_instance = zone->GetInstanceID();
+			}
+
+			zp->zpe[i].zoneinstance = target_instance;
 			i++;
 		}
 		iterator.Advance();
@@ -6800,23 +6818,36 @@ void Client::UpdateClientXTarget(Client *c)
 // IT IS NOT SAFE TO CALL THIS IF IT'S NOT INITIAL AGGRO
 void Client::AddAutoXTarget(Mob *m, bool send)
 {
+	if (m->IsBot() || ((m->IsPet() || m->IsTempPet()) && m->IsPetOwnerBot())) {
+		return;
+	}
+
 	m_activeautohatermgr->increment_count(m);
 
-	if (!XTargettingAvailable() || !XTargetAutoAddHaters || IsXTarget(m))
+	if (!XTargettingAvailable() || !XTargetAutoAddHaters || IsXTarget(m)) {
 		return;
+	}
 
-	for(int i = 0; i < GetMaxXTargets(); ++i)
-	{
-		if((XTargets[i].Type == Auto) && (XTargets[i].ID == 0))
-		{
+	for (int i = 0; i < GetMaxXTargets(); ++i) {
+		if (XTargets[i].Type == Auto && XTargets[i].ID == 0) {
 			XTargets[i].ID = m->GetID();
-			if (send) // if we don't send we're bulk sending updates later on
+
+			if (send) { // if we don't send we're bulk sending updates later on
 				SendXTargetPacket(i, m);
-			else
+			} else {
 				XTargets[i].dirty = true;
+			}
+
 			break;
 		}
 	}
+
+	LogXTargets(
+		"Adding [{}] to [{}] ({}) XTargets",
+		m->GetCleanName(),
+		GetCleanName(),
+		GetID()
+	);
 }
 
 void Client::RemoveXTarget(Mob *m, bool OnlyAutoSlots)
@@ -6825,15 +6856,23 @@ void Client::RemoveXTarget(Mob *m, bool OnlyAutoSlots)
 	// now we may need to clean up our CurrentTargetNPC entries
 	for (int i = 0; i < GetMaxXTargets(); ++i) {
 		if (XTargets[i].Type == CurrentTargetNPC && XTargets[i].ID == m->GetID()) {
-			XTargets[i].Type = Auto;
-			XTargets[i].ID = 0;
+			XTargets[i].Type  = Auto;
+			XTargets[i].ID    = 0;
 			XTargets[i].dirty = true;
 		}
 	}
+
 	auto r = GetRaid();
 	if (r) {
 		r->UpdateRaidXTargets();
 	}
+
+	LogXTargets(
+		"Removing [{}] from [{}] ({}) XTargets",
+		m->GetCleanName(),
+		GetCleanName(),
+		GetID()
+	);
 }
 
 void Client::UpdateXTargetType(XTargetType Type, Mob *m, const char *Name)
@@ -6990,7 +7029,7 @@ void Client::ShowXTargets(Client *c)
 			fmt::format(
 				"xtarget slot [{}] type [{}] ID [{}] name [{}]",
 				i,
-				XTargets[i].Type,
+				static_cast<int>(XTargets[i].Type),
 				XTargets[i].ID,
 				strlen(XTargets[i].Name) ? XTargets[i].Name : "No Name"
 			).c_str()
@@ -8896,49 +8935,69 @@ void Client::SetEXPEnabled(bool is_exp_enabled)
 	m_exp_enabled = is_exp_enabled;
 }
 
-/**
- * @param model_id
- */
 void Client::SetPrimaryWeaponOrnamentation(uint32 model_id)
 {
 	auto primary_item = m_inv.GetItem(EQ::invslot::slotPrimary);
 	if (primary_item) {
-		database.QueryDatabase(
-			StringFormat(
-				"UPDATE `inventory` SET `ornamentidfile` = %i WHERE `charid` = %i AND `slotid` = %i",
-				model_id,
+		auto l = InventoryRepository::GetWhere(
+			database,
+			fmt::format(
+				"`charid` = {} AND `slotid` = {}",
 				character_id,
 				EQ::invslot::slotPrimary
-			));
+			)
+		);
 
-		primary_item->SetOrnamentationIDFile(model_id);
-		SendItemPacket(EQ::invslot::slotPrimary, primary_item, ItemPacketTrade);
-		WearChange(EQ::textures::weaponPrimary, static_cast<uint16>(model_id), 0);
+		if (l.empty()) {
+			return;
+		}
 
-		Message(Chat::Yellow, "Your primary weapon appearance has been modified");
+		auto e = l.front();
+
+		e.ornamentidfile = model_id;
+
+		const int updated = InventoryRepository::UpdateOne(database, e);
+
+		if (updated) {
+			primary_item->SetOrnamentationIDFile(model_id);
+			SendItemPacket(EQ::invslot::slotPrimary, primary_item, ItemPacketTrade);
+			WearChange(EQ::textures::weaponPrimary, model_id, 0);
+
+			Message(Chat::Yellow, "Your primary weapon appearance has been modified.");
+		}
 	}
 }
 
-/**
- * @param model_id
- */
 void Client::SetSecondaryWeaponOrnamentation(uint32 model_id)
 {
 	auto secondary_item = m_inv.GetItem(EQ::invslot::slotSecondary);
 	if (secondary_item) {
-		database.QueryDatabase(
-			StringFormat(
-				"UPDATE `inventory` SET `ornamentidfile` = %i WHERE `charid` = %i AND `slotid` = %i",
-				model_id,
+		auto l = InventoryRepository::GetWhere(
+			database,
+			fmt::format(
+				"`charid` = {} AND `slotid` = {}",
 				character_id,
 				EQ::invslot::slotSecondary
-			));
+			)
+		);
 
-		secondary_item->SetOrnamentationIDFile(model_id);
-		SendItemPacket(EQ::invslot::slotSecondary, secondary_item, ItemPacketTrade);
-		WearChange(EQ::textures::weaponSecondary, static_cast<uint16>(model_id), 0);
+		if (l.empty()) {
+			return;
+		}
 
-		Message(Chat::Yellow, "Your secondary weapon appearance has been modified");
+		auto e = l.front();
+
+		e.ornamentidfile = model_id;
+
+		const int updated = InventoryRepository::UpdateOne(database, e);
+
+		if (updated) {
+			secondary_item->SetOrnamentationIDFile(model_id);
+			SendItemPacket(EQ::invslot::slotSecondary, secondary_item, ItemPacketTrade);
+			WearChange(EQ::textures::weaponSecondary, model_id, 0);
+
+			Message(Chat::Yellow, "Your secondary weapon appearance has been modified.");
+		}
 	}
 }
 
@@ -9124,6 +9183,7 @@ void Client::ShowDevToolsMenu()
 	 */
 	menu_show += Saylink::Silent("#showzonepoints", "Zone Points");
 	menu_show += " | " + Saylink::Silent("#showzonegloballoot", "Zone Global Loot");
+	menu_show += " | " + Saylink::Silent("#show content_flags", "Content Flags");
 
 	/**
 	 * Reload
@@ -9180,14 +9240,6 @@ void Client::ShowDevToolsMenu()
 	SendChatLineBreak();
 
 	Message(Chat::White, "Developer Tools Menu");
-
-	Message(
-		Chat::White,
-		fmt::format(
-			"Current Expansion | {}",
-			content_service.GetCurrentExpansionName()
-		).c_str()
-	);
 
 	Message(
 		Chat::White,
@@ -9302,6 +9354,36 @@ void Client::ShowDevToolsMenu()
 			help_link
 		).c_str()
 	);
+
+	SendChatLineBreak();
+
+	Message(
+		Chat::White,
+		fmt::format(
+			"Current Expansion | {} ({})",
+			content_service.GetCurrentExpansionName(),
+			content_service.GetCurrentExpansion()
+		).c_str()
+	);
+
+
+	auto z = GetZoneVersionWithFallback(zone->GetZoneID(), zone->GetInstanceVersion());
+
+	if (z) {
+		Message(
+			Chat::White,
+			fmt::format(
+				"Current Zone | [{}] ({}) version [{}] instance_id [{}] min/max expansion ({}/{}) content_flags [{}]",
+				z->short_name,
+				z->long_name,
+				z->version,
+				zone->GetInstanceID(),
+				z->min_expansion,
+				z->max_expansion,
+				z->content_flags
+			).c_str()
+		);
+	}
 
 	SendChatLineBreak();
 }
@@ -10200,6 +10282,7 @@ int Client::CountItem(uint32 item_id)
 		{ EQ::invbag::GENERAL_BAGS_BEGIN, EQ::invbag::GENERAL_BAGS_END },
 		{ EQ::invbag::CURSOR_BAG_BEGIN, EQ::invbag::CURSOR_BAG_END},
 		{ EQ::invslot::BANK_BEGIN, EQ::invslot::BANK_END },
+		{ EQ::invslot::GUILD_TRIBUTE_BEGIN, EQ::invslot::GUILD_TRIBUTE_END },
 		{ EQ::invbag::BANK_BAGS_BEGIN, EQ::invbag::BANK_BAGS_END },
 		{ EQ::invslot::SHARED_BANK_BEGIN, EQ::invslot::SHARED_BANK_END },
 		{ EQ::invbag::SHARED_BANK_BAGS_BEGIN, EQ::invbag::SHARED_BANK_BAGS_END },
@@ -10352,6 +10435,7 @@ void Client::RemoveItem(uint32 item_id, uint32 quantity)
 		{ EQ::invbag::GENERAL_BAGS_BEGIN, EQ::invbag::GENERAL_BAGS_END },
 		{ EQ::invbag::CURSOR_BAG_BEGIN, EQ::invbag::CURSOR_BAG_END},
 		{ EQ::invslot::BANK_BEGIN, EQ::invslot::BANK_END },
+		{ EQ::invslot::GUILD_TRIBUTE_BEGIN, EQ::invslot::GUILD_TRIBUTE_END },
 		{ EQ::invbag::BANK_BAGS_BEGIN, EQ::invbag::BANK_BAGS_END },
 		{ EQ::invslot::SHARED_BANK_BEGIN, EQ::invslot::SHARED_BANK_END },
 		{ EQ::invbag::SHARED_BANK_BAGS_BEGIN, EQ::invbag::SHARED_BANK_BAGS_END },
@@ -11430,6 +11514,39 @@ bool Client::IsLockSavePosition() const
 void Client::SetLockSavePosition(bool lock_save_position)
 {
 	Client::m_lock_save_position = lock_save_position;
+}
+
+void Client::SetAAPoints(uint32 points)
+{
+	const uint32 current_points = m_pp.aapoints;
+
+	m_pp.aapoints = points;
+
+	QuestEventID event_id = points > current_points ? EVENT_AA_GAIN : EVENT_AA_LOSS;
+	const uint32 change   = event_id == EVENT_AA_GAIN ? points - current_points : current_points - points;
+
+	if (parse->PlayerHasQuestSub(event_id)) {
+		parse->EventPlayer(event_id, this, std::to_string(change), 0);
+	}
+
+	SendAlternateAdvancementStats();
+}
+
+bool Client::RemoveAAPoints(uint32 points)
+{
+	if (m_pp.aapoints < points) {
+		return false;
+	}
+
+	m_pp.aapoints -= points;
+
+	if (parse->PlayerHasQuestSub(EVENT_AA_LOSS)) {
+		parse->EventPlayer(EVENT_AA_LOSS, this, std::to_string(points), 0);
+	}
+
+	SendAlternateAdvancementStats();
+
+	return true;
 }
 
 void Client::AddAAPoints(uint32 points)
