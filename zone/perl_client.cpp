@@ -3098,6 +3098,16 @@ int Perl_Client_GetEXPPercentage(Client* self)
 	return self->GetEXPPercentage();
 }
 
+bool Perl_Client_IsInAGuild(Client* self)
+{
+	return self->IsInAGuild();
+}
+
+bool Perl_Client_RemoveAAPoints(Client* self, uint32 points)
+{
+	return self->RemoveAAPoints(points);
+}
+
 void perl_register_client()
 {
 	perl::interpreter perl(PERL_GET_THX);
@@ -3386,6 +3396,7 @@ void perl_register_client()
 	package.add("IsDueling", &Perl_Client_IsDueling);
 	package.add("IsEXPEnabled", &Perl_Client_IsEXPEnabled);
 	package.add("IsGrouped", &Perl_Client_IsGrouped);
+	package.add("IsInAGuild", &Perl_Client_IsInAGuild);
 	package.add("IsLD", &Perl_Client_IsLD);
 	package.add("IsMedding", &Perl_Client_IsMedding);
 	package.add("IsRaidGrouped", &Perl_Client_IsRaidGrouped);
@@ -3464,6 +3475,7 @@ void perl_register_client()
 	package.add("ReadBookByName", &Perl_Client_ReadBookByName);
 	package.add("RefundAA", &Perl_Client_RefundAA);
 	package.add("ReloadDataBuckets", &Perl_Client_ReloadDataBuckets);
+	package.add("RemoveAAPoints", &Perl_Client_RemoveAAPoints);
 	package.add("RemoveAllExpeditionLockouts", (void(*)(Client*))&Perl_Client_RemoveAllExpeditionLockouts);
 	package.add("RemoveAllExpeditionLockouts", (void(*)(Client*, std::string))&Perl_Client_RemoveAllExpeditionLockouts);
 	package.add("RemoveEbonCrystals", &Perl_Client_RemoveEbonCrystals);

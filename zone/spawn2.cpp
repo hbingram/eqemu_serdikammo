@@ -440,14 +440,14 @@ bool ZoneDatabase::PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spa
 
 	std::unordered_map<uint32, uint32> spawn_times;
 
-	timeval tv;
+	timeval tv{};
 	gettimeofday(&tv, nullptr);
 
 	/* Bulk Load NPC Types Data into the cache */
 	content_db.LoadNPCTypesData(0, true);
 
 	const auto& l = RespawnTimesRepository::GetWhere(
-		*this,
+		database,
 		fmt::format(
 			"`instance_id` = {}",
 			zone->GetInstanceID()
@@ -807,7 +807,7 @@ void SpawnConditionManager::UpdateSpawnEvent(SpawnEvent &event)
 	e.next_month  = event.next.month;
 	e.next_year   = event.next.year;
 	e.enabled     = event.enabled ? 1 : 0;
-	e.next_minute = event.strict;
+	e.strict      = event.strict ? 1 : 0;
 
 	SpawnEventsRepository::UpdateOne(database, e);
 }

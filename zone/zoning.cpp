@@ -35,6 +35,7 @@ extern WorldServer worldserver;
 extern Zone* zone;
 
 #include "../common/repositories/character_peqzone_flags_repository.h"
+#include "../common/repositories/zone_flags_repository.h"
 #include "../common/events/player_event_logs.h"
 
 
@@ -70,6 +71,8 @@ void Client::Handle_OP_ZoneChange(const EQApplicationPacket *app) {
 		GetZoneModeString(zone_mode),
 		int(zone_mode)
 	);
+
+	content_service.HandleZoneRoutingMiddleware(zc);
 
 	uint16 target_zone_id = 0;
 	auto target_instance_id = zc->instanceID;
@@ -402,11 +405,23 @@ void Client::SendZoneCancel(ZoneChange_Struct *zc) {
 		zc->success
 	);
 
-	strcpy(zc2->char_name, zc->char_name);
+	strn0cpy(zc2->char_name, zc->char_name, 64);
 	zc2->zoneID = zone->GetZoneID();
 	zc2->success = 1;
-	outapp->priority = 6;
-	FastQueuePacket(&outapp);
+	zc2->instanceID = zone->GetInstanceID();
+
+	// this fixes an issue where when we do a zone cancel what often ends up happening is we are sending
+	// the client the wrong coordinates to zone back to. Often times it is the x,y,z of the destination zone
+	// because we saved the destination x,y,z on the client profile before we rejected the zone request.
+	// we're using rewind location because it should be where the client relatively was before we rejected the zone request.
+	// it also prevents the client from getting caught up in a zone loop because if we sent them exactly back to where they
+	// originated the request we could end up in a situation where the client is caught in a zone loop.
+	m_Position.x = m_RewindLocation.x;
+	m_Position.y = m_RewindLocation.y;
+	m_Position.z = m_RewindLocation.z;
+	zc2->x       = m_Position.x;
+	zc2->y       = m_Position.y;
+	zc2->z       = m_Position.z;
 
 	LogZoning(
 		"(zc2) Client [{}] char_name [{}] zoning to [{}] ({}) cancelled instance_id [{}] x [{}] y [{}] z [{}] zone_reason [{}] success [{}]",
@@ -421,6 +436,9 @@ void Client::SendZoneCancel(ZoneChange_Struct *zc) {
 		zc2->zone_reason,
 		zc2->success
 	);
+
+	outapp->priority = 6;
+	FastQueuePacket(&outapp);
 
 	//reset to unsolicited.
 	zone_mode = ZoneUnsolicited;
@@ -737,16 +755,40 @@ void Client::ZonePC(uint32 zoneID, uint32 instance_id, float x, float y, float z
 		pZoneName = strcpy(new char[zd->long_name.length() + 1], zd->long_name.c_str());
 	}
 
+	// If we are zoning to the same zone, we need to use the current instance ID if it is not specified.
+	if (zoneID == zone->GetZoneID() && instance_id == 0) {
+		instance_id = zone->GetInstanceID();
+	}
+
+	auto r = content_service.FindZone(zoneID, instance_id);
+	if (r.zone_id) {
+		zoneID      = r.zone_id;
+		instance_id = r.instance.id;
+		LogZoning(
+			"Client caught HandleZoneRoutingMiddleware [{}] zone_id [{}] instance_id [{}] x [{}] y [{}] z [{}] heading [{}] ignorerestrictions [{}] zone_mode [{}]",
+			GetCleanName(),
+			zoneID,
+			instance_id,
+			x,
+			y,
+			z,
+			heading,
+			ignorerestrictions,
+			static_cast<int>(zm)
+		);
+	}
+
 	LogInfo(
-		"Client [{}] zone_id [{}] x [{}] y [{}] z [{}] heading [{}] ignorerestrictions [{}] zone_mode [{}]",
+		"Client [{}] zone_id [{}] instance_id [{}] x [{}] y [{}] z [{}] heading [{}] ignorerestrictions [{}] zone_mode [{}]",
 		GetCleanName(),
 		zoneID,
+		instance_id,
 		x,
 		y,
 		z,
 		heading,
 		ignorerestrictions,
-		zm
+		static_cast<int>(zm)
 	);
 
 	cheat_manager.SetExemptStatus(Port, true);
@@ -864,9 +906,8 @@ void Client::ZonePC(uint32 zoneID, uint32 instance_id, float x, float y, float z
 			outapp->priority = 6;
 			FastQueuePacket(&outapp);
 		}
-		else if(zm == ZoneSolicited || zm == ZoneToSafeCoords) {
-			auto outapp =
-			    new EQApplicationPacket(OP_RequestClientZoneChange, sizeof(RequestClientZoneChange_Struct));
+		else if (zm == ZoneSolicited || zm == ZoneToSafeCoords) {
+			auto outapp = new EQApplicationPacket(OP_RequestClientZoneChange, sizeof(RequestClientZoneChange_Struct));
 			RequestClientZoneChange_Struct* gmg = (RequestClientZoneChange_Struct*) outapp->pBuffer;
 
 			gmg->zone_id = zoneID;
@@ -876,6 +917,17 @@ void Client::ZonePC(uint32 zoneID, uint32 instance_id, float x, float y, float z
 			gmg->heading = heading;
 			gmg->instance_id = instance_id;
 			gmg->type = 0x01;				//an observed value, not sure of meaning
+
+			LogZoning(
+				"Player [{}] has requested zoning to zone_id [{}] instance_id [{}] x [{}] y [{}] z [{}] heading [{}]",
+				GetCleanName(),
+				zoneID,
+				instance_id,
+				x,
+				y,
+				z,
+				heading
+			);
 
 			outapp->priority = 6;
 			FastQueuePacket(&outapp);
@@ -1067,53 +1119,48 @@ void Client::GoToDeath() {
 	MovePC(m_pp.binds[0].zone_id, m_pp.binds[0].instance_id, 0.0f, 0.0f, 0.0f, 0.0f, 1, ZoneToBindPoint);
 }
 
-void Client::ClearZoneFlag(uint32 zone_id) {
+void Client::ClearZoneFlag(uint32 zone_id)
+{
 	if (!HasZoneFlag(zone_id)) {
 		return;
 	}
 
 	zone_flags.erase(zone_id);
 
-	std::string query = fmt::format(
-		"DELETE FROM zone_flags WHERE charID = {} AND zoneID = {}",
-		CharacterID(),
-		zone_id
+	ZoneFlagsRepository::DeleteWhere(
+		database,
+		fmt::format(
+			"`charID` = {} AND `zoneID` = {}",
+			CharacterID(),
+			zone_id
+		)
 	);
-	auto results = database.QueryDatabase(query);
-
-	if (!results.Success()) {
-		LogError("MySQL Error while trying to clear zone flag for [{}]: [{}]", GetName(), results.ErrorMessage().c_str());
-	}
 }
 
-bool Client::HasZoneFlag(uint32 zone_id) const {
+bool Client::HasZoneFlag(uint32 zone_id) const
+{
 	return zone_flags.find(zone_id) != zone_flags.end();
 }
 
-void Client::LoadZoneFlags() {
-	const auto query = fmt::format(
-		"SELECT zoneID from zone_flags WHERE charID = {}",
-		CharacterID()
+void Client::LoadZoneFlags()
+{
+	const auto& l = ZoneFlagsRepository::GetWhere(
+		database,
+		fmt::format(
+			"`charID` = {}",
+			CharacterID()
+		)
 	);
-	auto results = database.QueryDatabase(query);
-
-	if (!results.Success()) {
-		LogError("MySQL Error while trying to load zone flags for [{}]: [{}]", GetName(), results.ErrorMessage().c_str());
-		return;
-	}
-
-	if (!results.RowCount()) {
-		return;
-	}
 
 	zone_flags.clear();
 
-	for (auto row : results) {
-		zone_flags.insert(Strings::ToUnsignedInt(row[0]));
+	for (const auto& e : l) {
+		zone_flags.insert(e.zoneID);
 	}
 }
 
-void Client::SendZoneFlagInfo(Client *to) const {
+void Client::SendZoneFlagInfo(Client* to) const
+{
 	if (zone_flags.empty()) {
 		to->Message(
 			Chat::White,
@@ -1178,23 +1225,21 @@ void Client::SendZoneFlagInfo(Client *to) const {
 	);
 }
 
-void Client::SetZoneFlag(uint32 zone_id) {
+void Client::SetZoneFlag(uint32 zone_id)
+{
 	if (HasZoneFlag(zone_id)) {
 		return;
 	}
 
 	zone_flags.insert(zone_id);
 
-	const auto query = fmt::format(
-		"INSERT INTO zone_flags (charID, zoneID) VALUES ({}, {})",
-		CharacterID(),
-		zone_id
+	ZoneFlagsRepository::InsertOne(
+		database,
+		ZoneFlagsRepository::ZoneFlags{
+			.charID = static_cast<int32_t>(CharacterID()),
+			.zoneID = static_cast<int32_t>(zone_id)
+		}
 	);
-	auto results = database.QueryDatabase(query);
-
-	if (!results.Success()) {
-		LogError("MySQL Error while trying to set zone flag for [{}]: [{}]", GetName(), results.ErrorMessage().c_str());
-	}
 }
 
 void Client::ClearPEQZoneFlag(uint32 zone_id) {

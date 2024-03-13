@@ -2307,8 +2307,10 @@ void EntityList::ChannelMessageFromWorld(const char *from, const char *to,
 		if (chan_num == ChatChannel_Guild) {
 			if (!client->IsInGuild(guild_id))
 				continue;
-			if (!guild_mgr.CheckPermission(guild_id, client->GuildRank(), GUILD_HEAR))
-				continue;
+			if (client->ClientVersion() >= EQ::versions::ClientVersion::RoF) {
+				if (!guild_mgr.CheckPermission(guild_id, client->GuildRank(), GUILD_ACTION_GUILD_CHAT_SEE))
+					continue;
+			}
 			if (client->GetFilter(FilterGuildChat) == FilterHide)
 				continue;
 		} else if (chan_num == ChatChannel_OOC) {
@@ -2337,14 +2339,13 @@ void EntityList::Message(uint32 to_guilddbid, uint32 type, const char *message, 
 	}
 }
 
-void EntityList::QueueClientsGuild(Mob *sender, const EQApplicationPacket *app,
-		bool ignore_sender, uint32 guild_id)
+void EntityList::QueueClientsGuild(const EQApplicationPacket *app, uint32 guild_id)
 {
 	auto it = client_list.begin();
 	while (it != client_list.end()) {
 		Client *client = it->second;
 		if (client->IsInGuild(guild_id))
-			client->QueuePacket(app);
+			client->QueuePacket(app, true);
 		++it;
 	}
 }
@@ -4378,8 +4379,9 @@ void EntityList::AddTempPetsToHateList(Mob *owner, Mob* other, bool bFrenzy)
 			if (n->GetSwarmInfo()->owner_id == owner->GetID()) {
 				if (
 					!n->GetSpecialAbility(IMMUNE_AGGRO) &&
-					!(n->GetSpecialAbility(IMMUNE_AGGRO_CLIENT) && other->IsClient()) &&
-					!(n->GetSpecialAbility(IMMUNE_AGGRO_NPC) && other->IsNPC())
+					!(other->IsBot() && n->GetSpecialAbility(IMMUNE_AGGRO_BOT)) &&
+					!(other->IsClient() && n->GetSpecialAbility(IMMUNE_AGGRO_CLIENT)) &&
+					!(other->IsNPC() && n->GetSpecialAbility(IMMUNE_AGGRO_NPC))
 				) {
 					n->hate_list.AddEntToHateList(other, 0, 0, bFrenzy);
 				}
@@ -4404,8 +4406,9 @@ void EntityList::AddTempPetsToHateListOnOwnerDamage(Mob *owner, Mob* attacker, i
 					attacker != n &&
 					!n->IsEngaged() &&
 					!n->GetSpecialAbility(IMMUNE_AGGRO) &&
-					!(n->GetSpecialAbility(IMMUNE_AGGRO_CLIENT) && attacker->IsClient()) &&
-					!(n->GetSpecialAbility(IMMUNE_AGGRO_NPC) && attacker->IsNPC()) &&
+					!(attacker->IsBot() && n->GetSpecialAbility(IMMUNE_AGGRO_BOT)) &&
+					!(attacker->IsClient() && n->GetSpecialAbility(IMMUNE_AGGRO_CLIENT)) &&
+					!(attacker->IsNPC() && n->GetSpecialAbility(IMMUNE_AGGRO_NPC)) &&
 					!attacker->IsTrap() &&
 					!attacker->IsCorpse()
 					) {

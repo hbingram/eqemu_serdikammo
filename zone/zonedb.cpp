@@ -214,7 +214,7 @@ void ZoneDatabase::LoadWorldContainer(uint32 parent_id, EQ::ItemInstance* contai
 	}
 
 	const auto& l = ObjectContentsRepository::GetWhere(
-		*this,
+		database,
 		fmt::format(
 			"`parentid` = {}",
 			parent_id
@@ -271,7 +271,7 @@ void ZoneDatabase::SaveWorldContainer(uint32 zone_id, uint32 parent_id, const EQ
 		}
 
 		ObjectContentsRepository::ReplaceOne(
-			*this,
+			database,
 			ObjectContentsRepository::ObjectContents{
 				.zoneid = zone_id,
 				.parentid = parent_id,
@@ -293,7 +293,7 @@ void ZoneDatabase::SaveWorldContainer(uint32 zone_id, uint32 parent_id, const EQ
 void ZoneDatabase::DeleteWorldContainer(uint32 parent_id, uint32 zone_id)
 {
 	ObjectContentsRepository::DeleteWhere(
-		*this,
+		database,
 		fmt::format(
 			"`parentid` = {} AND `zoneid` = {}",
 			parent_id,
@@ -3988,7 +3988,9 @@ bool ZoneDatabase::SummonAllCharacterCorpses(
 		}
 	}
 
-	CharacterCorpsesRepository::ReplaceMany(*this, l);
+	if (!l.empty()) {
+		CharacterCorpsesRepository::ReplaceMany(*this, l);
+	}
 
 	return corpse_count > 0;
 }
@@ -4268,7 +4270,7 @@ void ZoneDatabase::SetAAEXPModifierByCharID(
 		instance_version,
 		EXPModifier{
 			.aa_modifier = aa_modifier,
-			.exp_modifier = -1.0f
+			.exp_modifier = zone->GetEXPModifierByCharacterID(character_id)
 		}
 	);
 }
@@ -4286,7 +4288,7 @@ void ZoneDatabase::SetEXPModifierByCharID(
 		zone_id,
 		instance_version,
 		EXPModifier{
-			.aa_modifier = -1.0f,
+			.aa_modifier = zone->GetAAEXPModifierByCharacterID(character_id),
 			.exp_modifier = exp_modifier
 		}
 	);

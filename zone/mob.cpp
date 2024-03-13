@@ -392,6 +392,7 @@ Mob::Mob(
 	pet_stop          = false;
 	pet_regroup       = false;
 	_IsTempPet        = false;
+	pet_owner_bot     = false;
 	pet_owner_client  = false;
 	pet_owner_npc     = false;
 	pet_targetlock_id = 0;
@@ -1225,10 +1226,7 @@ void Mob::FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho)
 	UpdateActiveLight();
 	ns->spawn.light		= m_Light.Type[EQ::lightsource::LightActive];
 
-	if (IsNPC() && race == ERUDITE)
-		ns->spawn.showhelm = 1;
-	else
-		ns->spawn.showhelm = (helmtexture && helmtexture != 0xFF) ? 1 : 0;
+	ns->spawn.showhelm = helmtexture != std::numeric_limits<uint8>::max() ? 1 : 0;
 
 	ns->spawn.invis		= (invisible || hidden) ? 1 : 0;	// TODO: load this before spawning players
 	ns->spawn.NPC		= IsClient() ? 0 : 1;
@@ -1277,10 +1275,8 @@ void Mob::FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho)
 
 	strn0cpy(ns->spawn.lastName, lastname, sizeof(ns->spawn.lastName));
 
-	//for (i = 0; i < _MaterialCount; i++)
-	for (i = 0; i < 9; i++) {
-		// Only Player Races Wear Armor
-		if (IsPlayerRace(race) || i > 6) {
+	for (i = 0; i < EQ::textures::materialCount; i++) {
+		if (IsPlayerRace(race) || i > EQ::textures::armorFeet) {
 			ns->spawn.equipment.Slot[i].Material        = GetEquipmentMaterial(i);
 			ns->spawn.equipment.Slot[i].EliteModel      = IsEliteMaterialItem(i);
 			ns->spawn.equipment.Slot[i].HerosForgeModel = GetHerosForgeModel(i);
@@ -1288,13 +1284,42 @@ void Mob::FillSpawnStruct(NewSpawn_Struct* ns, Mob* ForWho)
 		}
 	}
 
-	if (texture > 0) {
-		for (i = 0; i < 9; i++) {
-			if (i == EQ::textures::weaponPrimary || i == EQ::textures::weaponSecondary || texture == 255) {
-				continue;
-			}
-			ns->spawn.equipment.Slot[i].Material = texture;
+	for (i = 0; i < EQ::textures::weaponPrimary; i++) {
+		if (texture == std::numeric_limits<uint8>::max()) {
+			continue;
 		}
+
+		if (i == EQ::textures::armorHead && helmtexture != texture) {
+			ns->spawn.equipment.Slot[i].Material = helmtexture;
+			continue;
+		}
+
+		if (i == EQ::textures::armorArms && armtexture != 0) {
+			ns->spawn.equipment.Slot[i].Material = armtexture;
+			continue;
+		}
+
+		if (i == EQ::textures::armorWrist && bracertexture != 0) {
+			ns->spawn.equipment.Slot[i].Material = bracertexture;
+			continue;
+		}
+
+		if (i == EQ::textures::armorHands && handtexture != 0) {
+			ns->spawn.equipment.Slot[i].Material = handtexture;
+			continue;
+		}
+
+		if (i == EQ::textures::armorLegs && legtexture != 0) {
+			ns->spawn.equipment.Slot[i].Material = legtexture;
+			continue;
+		}
+
+		if (i == EQ::textures::armorFeet && feettexture != 0) {
+			ns->spawn.equipment.Slot[i].Material = feettexture;
+			continue;
+		}
+
+		ns->spawn.equipment.Slot[i].Material = texture;
 	}
 
 	memset(ns->spawn.set_to_0xFF, 0xFF, sizeof(ns->spawn.set_to_0xFF));
@@ -2557,7 +2582,7 @@ void Mob::SendStatsWindow(Client* c, bool use_window)
 				CastToClient()->GetPVP() ? "Yes" : "No",
 				CastToClient()->GetGM() ? "On" : "Off",
 				EQ::constants::GetFlyModeName(static_cast<uint8>(flymode)),
-				flymode,
+				static_cast<int>(flymode),
 				CastToClient()->GetGMSpeed() ? "On" : "Off",
 				CastToClient()->GetHideMe() ? "On" : "Off",
 				CastToClient()->GetGMInvul() ? "On" : "Off",
@@ -4395,17 +4420,15 @@ void Mob::SendWearChangeAndLighting(int8 last_texture) {
 
 void Mob::ChangeSize(float in_size = 0, bool unrestricted)
 {
+	size = std::clamp(in_size, 1.0f, 255.0f);
+
 	if (!unrestricted) {
 		if (IsClient() || petid != 0) {
-			EQ::Clamp(in_size, 3.0f, 15.0f);
+			size = std::clamp(in_size, 3.0f, 15.0f);
 		}
 	}
 
-	EQ::Clamp(in_size, 1.0f, 255.0f);
-
-	size = in_size;
-
-	SendAppearancePacket(AppearanceType::Size, static_cast<uint32>(in_size));
+	SendAppearancePacket(AppearanceType::Size, static_cast<uint32>(size));
 }
 
 Mob* Mob::GetOwnerOrSelf()
@@ -5217,32 +5240,47 @@ int32 Mob::GetActSpellCasttime(uint16 spell_id, int32 casttime)
 
 }
 
-void Mob::ExecWeaponProc(const EQ::ItemInstance *inst, uint16 spell_id, Mob *on, int level_override) {
+void Mob::ExecWeaponProc(const EQ::ItemInstance* inst, uint16 spell_id, Mob* on, int level_override)
+{
 	// Changed proc targets to look up based on the spells goodEffect flag.
 	// This should work for the majority of weapons.
 	if (!on) {
 		return;
 	}
 
-	if(!IsValidSpell(spell_id) || on->GetSpecialAbility(NO_HARM_FROM_CLIENT)) {
+	if (!IsValidSpell(spell_id) || on->GetSpecialAbility(NO_HARM_FROM_CLIENT)) {
 		//This is so 65535 doesn't get passed to the client message and to logs because it is not relavant information for debugging.
 		return;
 	}
 
-	if (on->GetSpecialAbility(IMMUNE_DAMAGE_CLIENT) && IsClient())
+	if (IsBot() && on->GetSpecialAbility(IMMUNE_DAMAGE_BOT)) {
 		return;
+	}
 
-	if (on->GetSpecialAbility(IMMUNE_DAMAGE_NPC) && IsNPC())
+	if (IsClient() && on->GetSpecialAbility(IMMUNE_DAMAGE_CLIENT)) {
 		return;
+	}
 
-	if (IsNoCast())
+	if (IsNPC() && on->GetSpecialAbility(IMMUNE_DAMAGE_NPC)) {
 		return;
+	}
 
-	if(!IsValidSpell(spell_id)) { // Check for a valid spell otherwise it will crash through the function
-		if(IsClient()){
-			Message(0, "Invalid spell proc %u", spell_id);
+	if (IsNoCast()) {
+		return;
+	}
+
+	if (!IsValidSpell(spell_id)) { // Check for a valid spell otherwise it will crash through the function
+		if (IsClient()) {
+			Message(
+				Chat::White,
+				fmt::format(
+					"Invalid spell ID for proc {}.",
+					spell_id
+				).c_str()
+			);
 			LogSpells("Player [{}] Weapon Procced invalid spell [{}]", GetName(), spell_id);
 		}
+
 		return;
 	}
 
@@ -5256,7 +5294,7 @@ void Mob::ExecWeaponProc(const EQ::ItemInstance *inst, uint16 spell_id, Mob *on,
 		return;
 	}
 
-	if(inst && IsClient()) {
+	if (inst && IsClient()) {
 		//const cast is dirty but it would require redoing a ton of interfaces at this point
 		//It should be safe as we don't have any truly const EQ::ItemInstance floating around anywhere.
 		//So we'll live with it for now
@@ -5276,30 +5314,76 @@ void Mob::ExecWeaponProc(const EQ::ItemInstance *inst, uint16 spell_id, Mob *on,
 		}
 	}
 
-	bool twinproc = false;
-	int32 twinproc_chance = 0;
+	bool  twin_proc        = false;
+	int32 twin_proc_chance = 0;
 
 	if (IsClient() || IsBot()) {
-		twinproc_chance = GetFocusEffect(focusTwincast, spell_id);
+		twin_proc_chance = GetFocusEffect(focusTwincast, spell_id);
 	}
 
-	if (twinproc_chance && zone->random.Roll(twinproc_chance)) {
-		twinproc = true;
+	if (twin_proc_chance && zone->random.Roll(twin_proc_chance)) {
+		twin_proc = true;
 	}
 
-	if (IsBeneficialSpell(spell_id) && (!IsNPC() || (IsNPC() && CastToNPC()->GetInnateProcSpellID() != spell_id)) && spells[spell_id].target_type != ST_TargetsTarget) { // NPC innate procs don't take this path ever
-		SpellFinished(spell_id, this, EQ::spells::CastingSlot::Item, 0, -1, spells[spell_id].resist_difficulty, true, level_override);
-		if (twinproc) {
-			SpellFinished(spell_id, this, EQ::spells::CastingSlot::Item, 0, -1, spells[spell_id].resist_difficulty, true, level_override);
+	if (
+		IsBeneficialSpell(spell_id) &&
+		(
+			!IsNPC() ||
+			(
+				IsNPC() &&
+				CastToNPC()->GetInnateProcSpellID() != spell_id
+			)
+		) &&
+		spells[spell_id].target_type != ST_TargetsTarget
+	) { // NPC innate procs don't take this path ever
+		SpellFinished(
+			spell_id,
+			this,
+			EQ::spells::CastingSlot::Item,
+			0,
+			-1,
+			spells[spell_id].resist_difficulty,
+			true,
+			level_override
+		);
+
+		if (twin_proc) {
+			SpellFinished(
+				spell_id,
+				this,
+				EQ::spells::CastingSlot::Item,
+				0,
+				-1,
+				spells[spell_id].resist_difficulty,
+				true,
+				level_override
+			);
+		}
+	} else if (!(on->IsClient() && on->CastToClient()->dead)) { //dont proc on dead clients
+		SpellFinished(
+			spell_id,
+			on,
+			EQ::spells::CastingSlot::Item,
+			0,
+			-1,
+			spells[spell_id].resist_difficulty,
+			true,
+			level_override
+		);
+
+		if (twin_proc && (!(on->IsClient() && on->CastToClient()->dead))) {
+			SpellFinished(
+				spell_id,
+				on,
+				EQ::spells::CastingSlot::Item,
+				0,
+				-1,
+				spells[spell_id].resist_difficulty,
+				true,
+				level_override
+			);
 		}
 	}
-	else if(!(on->IsClient() && on->CastToClient()->dead)) { //dont proc on dead clients
-		SpellFinished(spell_id, on, EQ::spells::CastingSlot::Item, 0, -1, spells[spell_id].resist_difficulty, true, level_override);
-		if (twinproc && (!(on->IsClient() && on->CastToClient()->dead))) {
-			SpellFinished(spell_id, on, EQ::spells::CastingSlot::Item, 0, -1, spells[spell_id].resist_difficulty, true, level_override);
-		}
-	}
-	return;
 }
 
 uint32 Mob::GetZoneID() const {
@@ -5583,6 +5667,24 @@ bool Mob::ClearEntityVariables()
 		return false;
 	}
 
+	if (
+		(IsBot() && parse->BotHasQuestSub(EVENT_ENTITY_VARIABLE_DELETE)) ||
+		(IsClient() && parse->PlayerHasQuestSub(EVENT_ENTITY_VARIABLE_DELETE)) ||
+		(IsNPC() && parse->HasQuestSub(GetNPCTypeID(), EVENT_ENTITY_VARIABLE_DELETE))
+	) {
+		for (const auto& e : m_EntityVariables) {
+			std::vector<std::any> args = { e.first, e.second };
+
+			if (IsBot()) {
+				parse->EventBot(EVENT_ENTITY_VARIABLE_DELETE, CastToBot(), nullptr, "", 0, &args);
+			} else if (IsClient()) {
+				parse->EventPlayer(EVENT_ENTITY_VARIABLE_DELETE, CastToClient(), "", 0, &args);
+			} else if (IsNPC()) {
+				parse->EventNPC(EVENT_ENTITY_VARIABLE_DELETE, CastToNPC(), nullptr, "", 0, &args);
+			}
+		}
+	}
+
 	m_EntityVariables.clear();
 	return true;
 }
@@ -5599,6 +5701,23 @@ bool Mob::DeleteEntityVariable(std::string variable_name)
 	}
 
 	m_EntityVariables.erase(v);
+
+	if (
+		(IsBot() && parse->BotHasQuestSub(EVENT_ENTITY_VARIABLE_DELETE)) ||
+		(IsClient() && parse->PlayerHasQuestSub(EVENT_ENTITY_VARIABLE_DELETE)) ||
+		(IsNPC() && parse->HasQuestSub(GetNPCTypeID(), EVENT_ENTITY_VARIABLE_DELETE))
+	) {
+		std::vector<std::any> args = { v->first, v->second };
+
+		if (IsBot()) {
+			parse->EventBot(EVENT_ENTITY_VARIABLE_DELETE, CastToBot(), nullptr, "", 0, &args);
+		} else if (IsClient()) {
+			parse->EventPlayer(EVENT_ENTITY_VARIABLE_DELETE, CastToClient(), "", 0, &args);
+		} else if (IsNPC()) {
+			parse->EventNPC(EVENT_ENTITY_VARIABLE_DELETE, CastToNPC(), nullptr, "", 0, &args);
+		}
+	}
+
 	return true;
 }
 
@@ -5609,22 +5728,22 @@ std::string Mob::GetEntityVariable(std::string variable_name)
 	}
 
 	const auto& v = m_EntityVariables.find(variable_name);
-	if (v != m_EntityVariables.end()) {
-		return v->second;
-	}
 
-	return std::string();
+	return v != m_EntityVariables.end() ? v->second : std::string();
 }
 
 std::vector<std::string> Mob::GetEntityVariables()
 {
 	std::vector<std::string> l;
+
 	if (m_EntityVariables.empty()) {
 		return l;
 	}
 
+	l.reserve(m_EntityVariables.size());
+
 	for (const auto& v : m_EntityVariables) {
-		l.push_back(v.first);
+		l.emplace_back(v.first);
 	}
 
 	return l;
@@ -5636,18 +5755,41 @@ bool Mob::EntityVariableExists(std::string variable_name)
 		return false;
 	}
 
-	const auto& v = m_EntityVariables.find(variable_name);
-	if (v != m_EntityVariables.end()) {
-		return true;
-	}
-
-	return false;
+	return m_EntityVariables.find(variable_name) != m_EntityVariables.end();
 }
 
 void Mob::SetEntityVariable(std::string variable_name, std::string variable_value)
 {
 	if (variable_name.empty()) {
 		return;
+	}
+
+	const QuestEventID event_id = (
+		!EntityVariableExists(variable_name) ?
+		EVENT_ENTITY_VARIABLE_SET :
+		EVENT_ENTITY_VARIABLE_UPDATE
+	);
+
+	if (
+		(IsBot() && parse->BotHasQuestSub(event_id)) ||
+		(IsClient() && parse->PlayerHasQuestSub(event_id)) ||
+		(IsNPC() && parse->HasQuestSub(GetNPCTypeID(), event_id))
+	) {
+		std::vector<std::any> args;
+
+		if (event_id != EVENT_ENTITY_VARIABLE_UPDATE) {
+			args = { variable_name, variable_value };
+		} else {
+			args = { variable_name, GetEntityVariable(variable_name), variable_value };
+		}
+
+		if (IsBot()) {
+			parse->EventBot(event_id, CastToBot(), nullptr, "", 0, &args);
+		} else if (IsClient()) {
+			parse->EventPlayer(event_id, CastToClient(), "", 0, &args);
+		} else if (IsNPC()) {
+			parse->EventNPC(event_id, CastToNPC(), nullptr, "", 0, &args);
+		}
 	}
 
 	m_EntityVariables[variable_name] = variable_value;
@@ -6080,40 +6222,54 @@ bool Mob::TryFadeEffect(int slot)
 	return false;
 }
 
-void Mob::TrySympatheticProc(Mob *target, uint32 spell_id)
+void Mob::TrySympatheticProc(Mob* target, uint32 spell_id)
 {
-	if(target == nullptr || !IsValidSpell(spell_id) || !IsClient())
+	if (!target || !IsValidSpell(spell_id) || !IsOfClientBotMerc()) {
 		return;
-
-	uint16 focus_spell = GetSympatheticFocusEffect(focusSympatheticProc,spell_id);
-
-	if(!IsValidSpell(focus_spell))
-		return;
-
-	uint16 focus_trigger = GetSympatheticSpellProcID(focus_spell);
-
-	if(!IsValidSpell(focus_trigger))
-		return;
-
-	// For beneficial spells, if the triggered spell is also beneficial then proc it on the target
-	// if the triggered spell is detrimental, then it will trigger on the caster(ie cursed items)
-	if(IsBeneficialSpell(spell_id))
-	{
-		if(IsBeneficialSpell(focus_trigger))
-			SpellFinished(focus_trigger, target);
-
-		else
-			SpellFinished(focus_trigger, this, EQ::spells::CastingSlot::Item, 0, -1, spells[focus_trigger].resist_difficulty);
 	}
-	// For detrimental spells, if the triggered spell is beneficial, then it will land on the caster
-	// if the triggered spell is also detrimental, then it will land on the target
-	else
-	{
-		if(IsBeneficialSpell(focus_trigger))
-			SpellFinished(focus_trigger, this);
 
-		else
-			SpellFinished(focus_trigger, target, EQ::spells::CastingSlot::Item, 0, -1, spells[focus_trigger].resist_difficulty);
+	const uint16 focus_spell = GetSympatheticFocusEffect(focusSympatheticProc, spell_id);
+
+	if (!IsValidSpell(focus_spell)) {
+		return;
+	}
+
+	const uint16 focus_trigger = GetSympatheticSpellProcID(focus_spell);
+
+	if (!IsValidSpell(focus_trigger)) {
+		return;
+	}
+
+	if (IsBeneficialSpell(spell_id)) {
+		// For beneficial spells, if the triggered spell is also beneficial then proc it on the target
+		// if the triggered spell is detrimental, then it will trigger on the caster(ie cursed items)
+		if (IsBeneficialSpell(focus_trigger)) {
+			SpellFinished(focus_trigger, target);
+		} else {
+			SpellFinished(
+				focus_trigger,
+				this,
+				EQ::spells::CastingSlot::Item,
+				0,
+				-1,
+				spells[focus_trigger].resist_difficulty
+			);
+		}
+	} else {
+		// For detrimental spells, if the triggered spell is beneficial, then it will land on the caster
+		// if the triggered spell is also detrimental, then it will land on the target
+		if (IsBeneficialSpell(focus_trigger)) {
+			SpellFinished(focus_trigger, this);
+		} else {
+			SpellFinished(
+				focus_trigger,
+				target,
+				EQ::spells::CastingSlot::Item,
+				0,
+				-1,
+				spells[focus_trigger].resist_difficulty
+			);
+		}
 	}
 
 	CheckNumHitsRemaining(NumHit::MatchingSpells, -1, focus_spell);

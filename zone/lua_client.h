@@ -495,6 +495,7 @@ public:
 	void ClearXTargets();
 	int GetAAEXPPercentage();
 	int GetEXPPercentage();
+	bool IsInAGuild();
 
 	void ApplySpell(int spell_id);
 	void ApplySpell(int spell_id, int duration);
@@ -565,6 +566,7 @@ public:
 	void SetBotSpawnLimit(int new_spawn_limit, uint8 class_id);
 	void CampAllBots();
 	void CampAllBots(uint8 class_id);
+	bool RemoveAAPoints(uint32 points);
 
 	void DialogueWindow(std::string markdown);
 
