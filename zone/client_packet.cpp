@@ -14636,13 +14636,6 @@ void Client::Handle_OP_SpawnAppearance(const EQApplicationPacket *app)
 			playeraction = 4;
 			SetFeigned(false);
 		}
-		/* BRYANT121223-START-: Support spellwheel */
-		else if (sa->parameter == Animation::Casting) {
-			SetAppearance(eaCasting);
-			playeraction = 5;
-			SetFeigned(false);
-		}
-		/* BRYANT121223-END- */
 		else {
 			LogError("Client [{}] :: unknown appearance [{}]", name, (int)sa->parameter);
 			return;
