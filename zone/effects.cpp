@@ -893,15 +893,19 @@ bool Client::UseDiscipline(uint32 spell_id, uint32 target) {
 	//can we use the spell?
 	const SPDat_Spell_Struct &spell = spells[spell_id];
 	
-	// BRYANT052223-START-: allow any class to use any discipline
 	if (!spell.is_discipline) {
 		return false;
 	}
+
+	// BRYANT052223-START-: allow any class to use any discipline
 	uint8 level_to_use = 255;
+	/*
 	for (int i = 0; i < sizeof(spell.classes); i++)
 	{
 		if (spell.classes[i] < level_to_use) { level_to_use = spell.classes[i]; }
 	}
+	*/
+	level_to_use = spell.classes[14]; // BRYANT050324: only beastlord class exists
 	// BRYANT052223-END-: allow any class to use any discipline
 	
 	if(level_to_use == 255) {
@@ -915,6 +919,44 @@ bool Client::UseDiscipline(uint32 spell_id, uint32 target) {
 		//should summon them a new one...
 		return false;
 	}
+
+	// BRYANT050324-START: check character statistics
+	else if (spell.classes[0] != 0 && (((spell.classes[0] > 0) && (GetSTR() < spell.classes[0])) || ((spell.classes[0] < 0) && (GetSTR() > abs(spell.classes[0])))))
+	{
+		MessageString(Chat::Red, DISC_REQUIRES_STATS);
+		return false;
+	}
+	else if (spell.classes[1] != 0 && (((spell.classes[1] > 0) && (GetSTA() < spell.classes[1])) || ((spell.classes[1] < 0) && (GetSTA() > abs(spell.classes[1])))))
+	{
+		MessageString(Chat::Red, DISC_REQUIRES_STATS);
+		return false;
+	}
+	else if (spell.classes[2] != 0 && (((spell.classes[2] > 0) && (GetAGI() < spell.classes[2])) || ((spell.classes[2] < 0) && (GetAGI() > abs(spell.classes[2])))))
+	{
+		MessageString(Chat::Red, DISC_REQUIRES_STATS);
+		return false;
+	}
+	else if (spell.classes[3] != 0 && (((spell.classes[3] > 0) && (GetDEX() < spell.classes[3])) || ((spell.classes[3] < 0) && (GetDEX() > abs(spell.classes[3])))))
+	{
+		MessageString(Chat::Red, DISC_REQUIRES_STATS);
+		return false;
+	}
+	else if (spell.classes[4] != 0 && (((spell.classes[4] > 0) && (GetWIS() < spell.classes[4])) || ((spell.classes[4] < 0) && (GetWIS() > abs(spell.classes[4])))))
+	{
+		MessageString(Chat::Red, DISC_REQUIRES_STATS);
+		return false;
+	}
+	else if (spell.classes[5] != 0 && (((spell.classes[5] > 0) && (GetINT() < spell.classes[5])) || ((spell.classes[5] < 0) && (GetINT() > abs(spell.classes[5])))))
+	{
+		MessageString(Chat::Red, DISC_REQUIRES_STATS);
+		return false;
+	}
+	else if (spell.classes[6] != 0 && (((spell.classes[6] > 0) && (GetCHA() < spell.classes[6])) || ((spell.classes[6] < 0) && (GetCHA() > abs(spell.classes[6])))))
+	{
+		MessageString(Chat::Red, DISC_REQUIRES_STATS);
+		return false;
+	}
+	// BRYANT050324-END
 
 	if(GetEndurance() < spell.endurance_cost) {
 		Message(11, "You are too fatigued to use this skill right now.");
