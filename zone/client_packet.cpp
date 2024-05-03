@@ -4364,8 +4364,7 @@ void Client::Handle_OP_CastSpell(const EQApplicationPacket *app)
 		}
 	}
 
-	// BRYANT052223-START-: allow any class to use any spell
-	if(slot < CastingSlot::Item) {
+		if(slot < CastingSlot::Item) {
 		uint16 spell_to_cast = castspell->spell_id;
 		if (IsValidSpell(spell_to_cast)) {
 			const SPDat_Spell_Struct& spell = spells[spell_to_cast];
@@ -4375,18 +4374,66 @@ void Client::Handle_OP_CastSpell(const EQApplicationPacket *app)
 			}
 			else
 			{
+
+				// BRYANT052223-START-: allow any class to use any spell
 				uint8 level_to_use = 255;
+				/*
 				for (int i = 0; i < sizeof(spell.classes); i++)
 				{
 					if (spell.classes[i] < level_to_use) { level_to_use = spell.classes[i]; }
 				}
+				*/
+				level_to_use = spell.classes[14]; // BRYANT050324: only beastlord class exists
+				// BRYANT052223-END-: allow any class to use any spell
+
 				if (level_to_use > GetLevel()) {
 					MessageString(Chat::Red, SPELL_LEVEL_TO_LOW);
 					InterruptSpell();
 				}
 				else
 				{
-					CastSpell(spell_to_cast, castspell->target_id, slot);
+					// BRYANT050324-START: check character statistics
+					if (spell.classes[0] != 0 && (((spell.classes[0] > 0) && (GetSTR() < spell.classes[0])) || ((spell.classes[0] < 0) && (GetSTR() > abs(spell.classes[0])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[1] != 0 && (((spell.classes[1] > 0) && (GetSTA() < spell.classes[1])) || ((spell.classes[1] < 0) && (GetSTA() > abs(spell.classes[1])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[2] != 0 && (((spell.classes[2] > 0) && (GetAGI() < spell.classes[2])) || ((spell.classes[2] < 0) && (GetAGI() > abs(spell.classes[2])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[3] != 0 && (((spell.classes[3] > 0) && (GetDEX() < spell.classes[3])) || ((spell.classes[3] < 0) && (GetDEX() > abs(spell.classes[3])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[4] != 0 && (((spell.classes[4] > 0) && (GetWIS() < spell.classes[4])) || ((spell.classes[4] < 0) && (GetWIS() > abs(spell.classes[4])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[5] != 0 && (((spell.classes[5] > 0) && (GetINT() < spell.classes[5])) || ((spell.classes[5] < 0) && (GetINT() > abs(spell.classes[5])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[6] != 0 && (((spell.classes[6] > 0) && (GetCHA() < spell.classes[6])) || ((spell.classes[6] < 0) && (GetCHA() > abs(spell.classes[6])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					// BRYANT050324-END
+
+					else
+					{
+						CastSpell(spell_to_cast, castspell->target_id, slot);
+					}
 				}
 			}
 		}
@@ -4395,7 +4442,6 @@ void Client::Handle_OP_CastSpell(const EQApplicationPacket *app)
 			InterruptSpell();
 		}
 	}
-	// BRYANT052223-END-: allow any class to use any spell
 
 	/* Spell Slot or Potion Belt Slot */
 	else if (slot == CastingSlot::Item || slot == CastingSlot::PotionBelt)	// ITEM or POTION cast
