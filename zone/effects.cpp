@@ -921,37 +921,37 @@ bool Client::UseDiscipline(uint32 spell_id, uint32 target) {
 	}
 
 	// BRYANT050324-START: check character statistics
-	else if (spell.classes[0] != 0 && (((spell.classes[0] > 0) && (GetSTR() < spell.classes[0])) || ((spell.classes[0] < 0) && (GetSTR() > abs(spell.classes[0])))))
+	else if (spell.classes[0] != 0 && (((spell.classes[0] > 0) && (GetSTR() < spell.classes[0])) || ((spell.classes[0] < 0) && (GetSTR() >= abs(spell.classes[0])))))
 	{
 		MessageString(Chat::Red, DISC_REQUIRES_STATS);
 		return false;
 	}
-	else if (spell.classes[1] != 0 && (((spell.classes[1] > 0) && (GetSTA() < spell.classes[1])) || ((spell.classes[1] < 0) && (GetSTA() > abs(spell.classes[1])))))
+	else if (spell.classes[1] != 0 && (((spell.classes[1] > 0) && (GetSTA() < spell.classes[1])) || ((spell.classes[1] < 0) && (GetSTA() >= abs(spell.classes[1])))))
 	{
 		MessageString(Chat::Red, DISC_REQUIRES_STATS);
 		return false;
 	}
-	else if (spell.classes[2] != 0 && (((spell.classes[2] > 0) && (GetAGI() < spell.classes[2])) || ((spell.classes[2] < 0) && (GetAGI() > abs(spell.classes[2])))))
+	else if (spell.classes[2] != 0 && (((spell.classes[2] > 0) && (GetAGI() < spell.classes[2])) || ((spell.classes[2] < 0) && (GetAGI() >= abs(spell.classes[2])))))
 	{
 		MessageString(Chat::Red, DISC_REQUIRES_STATS);
 		return false;
 	}
-	else if (spell.classes[3] != 0 && (((spell.classes[3] > 0) && (GetDEX() < spell.classes[3])) || ((spell.classes[3] < 0) && (GetDEX() > abs(spell.classes[3])))))
+	else if (spell.classes[3] != 0 && (((spell.classes[3] > 0) && (GetDEX() < spell.classes[3])) || ((spell.classes[3] < 0) && (GetDEX() >= abs(spell.classes[3])))))
 	{
 		MessageString(Chat::Red, DISC_REQUIRES_STATS);
 		return false;
 	}
-	else if (spell.classes[4] != 0 && (((spell.classes[4] > 0) && (GetWIS() < spell.classes[4])) || ((spell.classes[4] < 0) && (GetWIS() > abs(spell.classes[4])))))
+	else if (spell.classes[4] != 0 && (((spell.classes[4] > 0) && (GetWIS() < spell.classes[4])) || ((spell.classes[4] < 0) && (GetWIS() >= abs(spell.classes[4])))))
 	{
 		MessageString(Chat::Red, DISC_REQUIRES_STATS);
 		return false;
 	}
-	else if (spell.classes[5] != 0 && (((spell.classes[5] > 0) && (GetINT() < spell.classes[5])) || ((spell.classes[5] < 0) && (GetINT() > abs(spell.classes[5])))))
+	else if (spell.classes[5] != 0 && (((spell.classes[5] > 0) && (GetINT() < spell.classes[5])) || ((spell.classes[5] < 0) && (GetINT() >= abs(spell.classes[5])))))
 	{
 		MessageString(Chat::Red, DISC_REQUIRES_STATS);
 		return false;
 	}
-	else if (spell.classes[6] != 0 && (((spell.classes[6] > 0) && (GetCHA() < spell.classes[6])) || ((spell.classes[6] < 0) && (GetCHA() > abs(spell.classes[6])))))
+	else if (spell.classes[6] != 0 && (((spell.classes[6] > 0) && (GetCHA() < spell.classes[6])) || ((spell.classes[6] < 0) && (GetCHA() >= abs(spell.classes[6])))))
 	{
 		MessageString(Chat::Red, DISC_REQUIRES_STATS);
 		return false;
