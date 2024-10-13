@@ -29,11 +29,13 @@ void command_reload(Client *c, const Seperator *sep)
 	bool is_loot                 = !strcasecmp(sep->arg[1], "loot");
 	bool is_merchants            = !strcasecmp(sep->arg[1], "merchants");
 	bool is_npc_emotes           = !strcasecmp(sep->arg[1], "npc_emotes");
+	bool is_npc_spells           = !strcasecmp(sep->arg[1], "npc_spells");
 	bool is_objects              = !strcasecmp(sep->arg[1], "objects");
 	bool is_opcodes              = !strcasecmp(sep->arg[1], "opcodes") || is_opcodes_reload_alias;
 	bool is_perl_export          = !strcasecmp(sep->arg[1], "perl_export");
 	bool is_quest                = !strcasecmp(sep->arg[1], "quest") || (is_rq_alias);
 	bool is_rules                = !strcasecmp(sep->arg[1], "rules");
+	bool is_skill_caps           = !strcasecmp(sep->arg[1], "skill_caps");
 	bool is_static               = !strcasecmp(sep->arg[1], "static");
 	bool is_tasks                = !strcasecmp(sep->arg[1], "tasks");
 	bool is_titles               = !strcasecmp(sep->arg[1], "titles");
@@ -61,11 +63,13 @@ void command_reload(Client *c, const Seperator *sep)
 		!is_loot &&
 		!is_merchants &&
 		!is_npc_emotes &&
+		!is_npc_spells &&
 		!is_objects &&
 		!is_opcodes &&
 		!is_perl_export &&
 		!is_quest &&
 		!is_rules &&
+		!is_skill_caps &&
 		!is_static &&
 		!is_tasks &&
 		!is_titles &&
@@ -135,6 +139,9 @@ void command_reload(Client *c, const Seperator *sep)
 	} else if (is_npc_emotes) {
 		c->Message(Chat::White, "Attempting to reload NPC Emotes globally.");
 		pack = new ServerPacket(ServerOP_ReloadNPCEmotes, 0);
+	} else if (is_npc_spells) {
+		c->Message(Chat::White, "Attempting to reload NPC Spells globally.");
+		pack = new ServerPacket(ServerOP_ReloadNPCSpells, 0);
 	} else if (is_objects) {
 		c->Message(Chat::White, "Attempting to reload Objects globally.");
 		pack = new ServerPacket(ServerOP_ReloadObjects, 0);
@@ -161,6 +168,9 @@ void command_reload(Client *c, const Seperator *sep)
 	} else if (is_rules) {
 		c->Message(Chat::White, "Attempting to reload Rules globally.");
 		pack = new ServerPacket(ServerOP_ReloadRules, 0);
+	} else if (is_skill_caps) {
+		c->Message(Chat::White, "Attempting to reload Skill Caps globally.");
+		pack = new ServerPacket(ServerOP_ReloadSkillCaps, 0);
 	} else if (is_static) {
 		c->Message(Chat::White, "Attempting to reload Static Zone Data globally.");
 		pack = new ServerPacket(ServerOP_ReloadStaticZoneData, 0);

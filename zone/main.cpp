@@ -86,6 +86,7 @@ extern volatile bool is_zone_loaded;
 #include "../common/events/player_event_logs.h"
 #include "../common/path_manager.h"
 #include "../common/database/database_update.h"
+#include "../common/skill_caps.h"
 #include "zone_event_scheduler.h"
 #include "zone_cli.h"
 
@@ -108,6 +109,7 @@ WorldContentService   content_service;
 PathManager           path;
 PlayerEventLogs       player_event_logs;
 DatabaseUpdate        database_update;
+SkillCaps             skill_caps;
 
 const SPDat_Spell_Struct* spells;
 int32 SPDAT_RECORDS = -1;
@@ -307,6 +309,8 @@ int main(int argc, char **argv)
 
 	player_event_logs.SetDatabase(&database)->Init();
 
+	skill_caps.SetContentDatabase(&content_db)->LoadSkillCaps();
+
 	const auto c = EQEmuConfig::get();
 	if (c->auto_database_updates) {
 		if (database_update.SetDatabase(&database)->HasPendingUpdates()) {
@@ -372,10 +376,6 @@ int main(int argc, char **argv)
 		LogError("Failed. But ignoring error and going on..");
 	}
 
-	if (!content_db.LoadSkillCaps(std::string(hotfix_name))) {
-		LogError("Loading skill caps failed!");
-		return 1;
-	}
 	if (!database.LoadSpells(hotfix_name, &SPDAT_RECORDS, &spells)) {
 		LogError("Loading spells failed!");
 		return 1;
@@ -445,6 +445,21 @@ int main(int argc, char **argv)
 #ifdef EMBPERL
 	auto perl_parser = new PerlembParser();
 	parse->RegisterQuestInterface(perl_parser, "pl");
+
+#ifdef __linux__
+	std::string current_version = CURRENT_VERSION;
+	// running release binaries
+	if (!Strings::Contains(current_version, "-dev")) {
+		if (!fs::exists("/opt/eqemu-perl")) {
+			LogError("You are running release binaries without having the required eqemu version of perl compiled and installed on this system present at /opt/eqemu-perl");
+			LogError("If you are running an old Linux install, you need to install the required perl version from the eqemu-perl");
+			LogError("Instructions can be referenced at https://github.com/Akkadius/akk-stack/blob/master/containers/eqemu-server/Dockerfile#L92-L106");
+			LogError("Press any key to continue");
+			getchar();
+			return 0;
+		}
+	}
+#endif
 
 	/* Load Perl Event Export Settings */
 	parse->LoadPerlEventExportSettings(parse->perl_event_export_settings);

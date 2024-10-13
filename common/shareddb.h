@@ -41,14 +41,19 @@ struct NPCFactionList;
 struct FactionAssociations;
 
 
-namespace EQ
-{
+namespace EQ {
 
 	struct ItemData;
 	class ItemInstance;
 	class InventoryProfile;
 	class MemoryMappedFile;
 }
+
+struct Book_Struct
+{
+	uint8       language;
+	std::string text;
+};
 
 /*
     This object is inherited by world and zone's DB object,
@@ -114,7 +119,7 @@ public:
 		int admin
 	);
 
-	std::string GetBook(const char *txtfile, int16 *language);
+	Book_Struct GetBook(const std::string& text_file);
 
 	/**
 	 * items
@@ -159,14 +164,6 @@ public:
 	const EvolveInfo *GetEvolveInfo(uint32 loregroup);
 	uint32 GetSharedItemsCount() { return m_shared_items_count; }
 	uint32 GetItemsCount();
-
-	/**
-	 * skills
-	 */
-	void LoadSkillCaps(void *data);
-	bool LoadSkillCaps(const std::string &prefix);
-	uint16 GetSkillCap(uint8 Class_, EQ::skills::SkillType Skill, uint8 Level) const;
-	uint8 GetTrainLevel(uint8 Class_, EQ::skills::SkillType Skill, uint8 Level) const;
 
 	/**
 	 * spells
