@@ -16,31 +16,32 @@
 #include "zone.h"
 #include "zone_config.h"
 
-#include "lua_parser.h"
 #include "lua_bit.h"
+#include "lua_bot.h"
+#include "lua_buff.h"
+#include "lua_client.h"
+#include "lua_corpse.h"
+#include "lua_door.h"
+#include "lua_encounter.h"
 #include "lua_entity.h"
+#include "lua_entity_list.h"
 #include "lua_expedition.h"
+#include "lua_general.h"
+#include "lua_group.h"
+#include "lua_hate_list.h"
+#include "lua_inventory.h"
 #include "lua_item.h"
 #include "lua_iteminst.h"
+#include "lua_merc.h"
 #include "lua_mob.h"
-#include "lua_hate_list.h"
-#include "lua_client.h"
-#include "lua_inventory.h"
 #include "lua_npc.h"
-#include "lua_spell.h"
-#include "lua_entity_list.h"
-#include "lua_group.h"
-#include "lua_raid.h"
-#include "lua_corpse.h"
 #include "lua_object.h"
-#include "lua_door.h"
-#include "lua_spawn.h"
 #include "lua_packet.h"
-#include "lua_general.h"
-#include "lua_encounter.h"
+#include "lua_parser.h"
+#include "lua_raid.h"
+#include "lua_spawn.h"
+#include "lua_spell.h"
 #include "lua_stat_bonuses.h"
-
-#include "lua_bot.h"
 
 const char *LuaEvents[_LargestEventID] = {
 	"event_say",
@@ -183,7 +184,9 @@ const char *LuaEvents[_LargestEventID] = {
 	"event_entity_variable_delete",
 	"event_entity_variable_set",
 	"event_entity_variable_update",
-	"event_aa_loss"
+	"event_aa_loss",
+	"event_spell_blocked",
+	"event_read_item"
 };
 
 extern Zone *zone;
@@ -257,6 +260,7 @@ LuaParser::LuaParser() {
 	NPCArgumentDispatch[EVENT_ENTITY_VARIABLE_DELETE] = handle_npc_entity_variable;
 	NPCArgumentDispatch[EVENT_ENTITY_VARIABLE_SET]    = handle_npc_entity_variable;
 	NPCArgumentDispatch[EVENT_ENTITY_VARIABLE_UPDATE] = handle_npc_entity_variable;
+	NPCArgumentDispatch[EVENT_SPELL_BLOCKED]          = handle_npc_spell_blocked;
 
 	PlayerArgumentDispatch[EVENT_SAY]                        = handle_player_say;
 	PlayerArgumentDispatch[EVENT_ENVIRONMENTAL_DAMAGE]       = handle_player_environmental_damage;
@@ -345,6 +349,8 @@ LuaParser::LuaParser() {
 	PlayerArgumentDispatch[EVENT_ENTITY_VARIABLE_SET]        = handle_player_entity_variable;
 	PlayerArgumentDispatch[EVENT_ENTITY_VARIABLE_UPDATE]     = handle_player_entity_variable;
 	PlayerArgumentDispatch[EVENT_AA_LOSS]                    = handle_player_aa_loss;
+	PlayerArgumentDispatch[EVENT_SPELL_BLOCKED]              = handle_player_spell_blocked;
+	PlayerArgumentDispatch[EVENT_READ_ITEM]                  = handle_player_read_item;
 
 	ItemArgumentDispatch[EVENT_ITEM_CLICK]      = handle_item_click;
 	ItemArgumentDispatch[EVENT_ITEM_CLICK_CAST] = handle_item_click;
@@ -399,6 +405,7 @@ LuaParser::LuaParser() {
 	BotArgumentDispatch[EVENT_ENTITY_VARIABLE_DELETE] = handle_bot_entity_variable;
 	BotArgumentDispatch[EVENT_ENTITY_VARIABLE_SET]    = handle_bot_entity_variable;
 	BotArgumentDispatch[EVENT_ENTITY_VARIABLE_UPDATE] = handle_bot_entity_variable;
+	BotArgumentDispatch[EVENT_SPELL_BLOCKED]          = handle_bot_spell_blocked;
 #endif
 
 	L = nullptr;
@@ -1264,6 +1271,8 @@ void LuaParser::MapFunctions(lua_State *L) {
 			lua_register_bodytypes(),
 			lua_register_filters(),
 			lua_register_message_types(),
+			lua_register_zone_types(),
+			lua_register_languages(),
 			lua_register_entity(),
 			lua_register_encounter(),
 			lua_register_mob(),
@@ -1271,6 +1280,7 @@ void LuaParser::MapFunctions(lua_State *L) {
 			lua_register_npc(),
 			lua_register_client(),
 			lua_register_bot(),
+			lua_register_merc(),
 			lua_register_inventory(),
 			lua_register_inventory_where(),
 			lua_register_iteminst(),
@@ -1305,7 +1315,8 @@ void LuaParser::MapFunctions(lua_State *L) {
 			lua_register_journal_speakmode(),
 			lua_register_journal_mode(),
 			lua_register_expedition(),
-			lua_register_expedition_lock_messages()
+			lua_register_expedition_lock_messages(),
+			lua_register_buff()
 		)];
 
 	} catch(std::exception &ex) {
@@ -1576,11 +1587,74 @@ uint64 LuaParser::GetExperienceForKill(Client *self, Mob *against, bool &ignoreD
 	return retval;
 }
 
+
+int64 LuaParser::CommonDamage(Mob *self, Mob* attacker, int64 value, uint16 spell_id, int skill_used, bool avoidable, int8 buff_slot, bool buff_tic, int special, bool &ignore_default)
+{
+	int64 retval = 0;
+	for (auto &mod : mods_) {
+		mod.CommonDamage(self, attacker, value, spell_id, skill_used, avoidable, buff_slot, buff_tic, special, retval, ignore_default);
+	}
+	return retval;
+}
+
+uint64 LuaParser::HealDamage(Mob *self, Mob* caster, uint64 value, uint16 spell_id, bool &ignore_default)
+{
+	uint64 retval = 0;
+	for (auto &mod : mods_) {
+		mod.HealDamage(self, caster, value, spell_id, retval, ignore_default);
+	}
+	return retval;
+}
+
+bool LuaParser::IsImmuneToSpell(Mob *self, Mob *caster, uint16 spell_id, bool &ignore_default)
+{
+	bool retval = false;
+	for (auto &mod : mods_) {
+		mod.IsImmuneToSpell(self, caster, spell_id, retval, ignore_default);
+	}
+	return retval;
+}
+
 int64 LuaParser::CalcSpellEffectValue_formula(Mob *self, uint32 formula, int64 base_value, int64 max_value, int caster_level, uint16 spell_id, int ticsremaining, bool &ignoreDefault)
 {
 	int64 retval = 0;
 	for (auto &mod : mods_) {
 		mod.CalcSpellEffectValue_formula(self, formula, base_value, max_value, caster_level, spell_id, ticsremaining, retval, ignoreDefault);
+	}
+	return retval;
+}
+
+int32 LuaParser::UpdatePersonalFaction(Mob *self, int32 npc_value, int32 faction_id, int32 current_value, int32 temp, int32 this_faction_min, int32 this_faction_max, bool &ignore_default)
+{
+	int32 retval = 0;
+	for (auto &mod : mods_) {
+		mod.UpdatePersonalFaction(self, npc_value, faction_id, current_value, temp, this_faction_min, this_faction_max, retval, ignore_default);
+	}
+	return retval;
+}
+
+void LuaParser::RegisterBug(Client *self, BaseBugReportsRepository::BugReports bug, bool &ignore_default)
+{
+	for (auto &mod : mods_) {
+		mod.RegisterBug(self, bug, ignore_default);
+	}
+}
+
+
+uint64 LuaParser::SetEXP(Mob *self, ExpSource exp_source, uint64 current_exp, uint64 set_exp, bool is_rezz_exp, bool &ignore_default)
+{
+	uint64 retval = 0;
+	for (auto &mod : mods_) {
+		mod.SetEXP(self, exp_source, current_exp, set_exp, is_rezz_exp, retval, ignore_default);
+	}
+	return retval;
+}
+
+uint64 LuaParser::SetAAEXP(Mob *self, ExpSource exp_source, uint64 current_aa_exp, uint64 set_aa_exp, bool is_rezz_exp, bool &ignore_default)
+{
+	uint64 retval = 0;
+	for (auto &mod : mods_) {
+		mod.SetAAEXP(self, exp_source, current_aa_exp, set_aa_exp, is_rezz_exp, retval, ignore_default);
 	}
 	return retval;
 }
@@ -1762,4 +1836,191 @@ void LuaParser::LoadBotScript(std::string filename) {
 
 void LuaParser::LoadGlobalBotScript(std::string filename) {
 	LoadScript(filename, "global_bot");
+}
+
+int LuaParser::EventMerc(
+	QuestEventID evt,
+	Merc *merc,
+	Mob *init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+) {
+	evt = ConvertLuaEvent(evt);
+	if (evt >= _LargestEventID) {
+		return 0;
+	}
+
+	if (!merc) {
+		return 0;
+	}
+
+	if (!MercHasQuestSub(evt)) {
+		return 0;
+	}
+
+	return _EventMerc("merc", evt, merc, init, data, extra_data, extra_pointers);
+}
+
+int LuaParser::EventGlobalMerc(
+	QuestEventID evt,
+	Merc *merc,
+	Mob *init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+) {
+	evt = ConvertLuaEvent(evt);
+	if (evt >= _LargestEventID) {
+		return 0;
+	}
+
+	if (!merc) {
+		return 0;
+	}
+
+	if (!GlobalMercHasQuestSub(evt)) {
+		return 0;
+	}
+
+	return _EventMerc("global_merc", evt, merc, init, data, extra_data, extra_pointers);
+}
+
+int LuaParser::_EventMerc(
+	std::string package_name,
+	QuestEventID evt,
+	Merc *merc,
+	Mob *init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers,
+	luabind::adl::object *l_func
+) {
+	const char *sub_name = LuaEvents[evt];
+	int start = lua_gettop(L);
+
+	try {
+		int npop = 2;
+		PushErrorHandler(L);
+		if(l_func != nullptr) {
+			l_func->push(L);
+		} else {
+			lua_getfield(L, LUA_REGISTRYINDEX, package_name.c_str());
+			lua_getfield(L, -1, sub_name);
+			npop = 3;
+		}
+
+		lua_createtable(L, 0, 0);
+		//push self
+		Lua_Merc l_merc(merc);
+		luabind::adl::object l_merc_o = luabind::adl::object(L, l_merc);
+		l_merc_o.push(L);
+		lua_setfield(L, -2, "self");
+
+		auto arg_function = NPCArgumentDispatch[evt];
+		arg_function(this, L, merc, init, data, extra_data, extra_pointers);
+		auto* c = (init && init->IsClient()) ? init->CastToClient() : nullptr;
+
+		quest_manager.StartQuest(merc, c);
+		if(lua_pcall(L, 1, 1, start + 1)) {
+			std::string error = lua_tostring(L, -1);
+			AddError(error);
+			quest_manager.EndQuest();
+			lua_pop(L, npop);
+			return 0;
+		}
+		quest_manager.EndQuest();
+
+		if(lua_isnumber(L, -1)) {
+			int ret = static_cast<int>(lua_tointeger(L, -1));
+			lua_pop(L, npop);
+			return ret;
+		}
+
+		lua_pop(L, npop);
+	} catch(std::exception &ex) {
+		AddError(
+			fmt::format(
+				"Lua Exception | [{}] for Merc [{}] in [{}]: {}",
+				sub_name,
+				merc->GetID(),
+				package_name,
+				ex.what()
+			)
+		);
+
+		//Restore our stack to the best of our ability
+		int end = lua_gettop(L);
+		int n = end - start;
+		if(n > 0) {
+			lua_pop(L, n);
+		}
+	}
+
+	return 0;
+}
+
+int LuaParser::DispatchEventMerc(
+	QuestEventID evt,
+	Merc *merc,
+	Mob *init,
+	std::string data,
+	uint32 extra_data,
+	std::vector<std::any> *extra_pointers
+) {
+	evt = ConvertLuaEvent(evt);
+	if (evt >= _LargestEventID) {
+		return 0;
+	}
+
+	std::string package_name = "merc";
+
+	auto iter = lua_encounter_events_registered.find(package_name);
+	if (iter == lua_encounter_events_registered.end()) {
+		return 0;
+	}
+
+	int ret = 0;
+	auto riter = iter->second.begin();
+	while (riter != iter->second.end()) {
+		if (riter->event_id == evt) {
+			package_name = fmt::format("encounter_{}", riter->encounter_name);
+			int i = _EventMerc(package_name, evt, merc, init, data, extra_data, extra_pointers, &riter->lua_reference);
+			if (i != 0) {
+				ret = i;
+			}
+		}
+
+		++riter;
+	}
+
+	return ret;
+}
+
+bool LuaParser::MercHasQuestSub(QuestEventID evt) {
+	evt = ConvertLuaEvent(evt);
+	if (evt >= _LargestEventID) {
+		return false;
+	}
+
+	const char *subname = LuaEvents[evt];
+	return HasFunction(subname, "merc");
+}
+
+bool LuaParser::GlobalMercHasQuestSub(QuestEventID evt) {
+	evt = ConvertLuaEvent(evt);
+	if (evt >= _LargestEventID) {
+		return false;
+	}
+
+	const char *subname = LuaEvents[evt];
+	return HasFunction(subname, "global_merc");
+}
+
+void LuaParser::LoadMercScript(std::string filename) {
+	LoadScript(filename, "merc");
+}
+
+void LuaParser::LoadGlobalMercScript(std::string filename) {
+	LoadScript(filename, "global_merc");
 }

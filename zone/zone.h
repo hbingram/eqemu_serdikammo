@@ -46,6 +46,7 @@
 #include "../common/repositories/lootdrop_repository.h"
 #include "../common/repositories/lootdrop_entries_repository.h"
 #include "../common/repositories/base_data_repository.h"
+#include "../common/repositories/skill_caps_repository.h"
 
 struct EXPModifier
 {
@@ -124,6 +125,7 @@ public:
 	bool CanCastOutdoor() const { return (can_castoutdoor); } //qadar
 	bool CanDoCombat() const { return (can_combat); }
 	bool CanLevitate() const { return (can_levitate); } // Magoth78
+	bool IsWaterZone(float z);
 	bool Depop(bool StartSpawnTimer = false);
 	bool did_adventure_actions;
 	bool GetAuth(
@@ -152,6 +154,7 @@ public:
 	bool IsSpecialBindLocation(const glm::vec4& location);
 	bool Process();
 	bool SaveZoneCFG();
+	bool DoesAlternateCurrencyExist(uint32 currency_id);
 
 	int GetNpcPositionUpdateDistance() const;
 	void SetNpcPositionUpdateDistance(int in_npc_position_update_distance);
@@ -332,7 +335,7 @@ public:
 	bool IsQuestHotReloadQueued() const;
 	void SetQuestHotReloadQueued(bool in_quest_hot_reload_queued);
 
-	bool CompareDataBucket(uint8 bucket_comparison, const std::string& bucket_value, const std::string& player_value);
+	bool CompareDataBucket(uint8 comparison_type, const std::string& bucket, const std::string& value);
 
 	WaterMap *watermap;
 	ZonePoint *GetClosestZonePoint(const glm::vec3 &location, uint32 to, Client *client, float max_distance = 40000.0f);
@@ -437,7 +440,7 @@ public:
 
 	// loot
 	void LoadLootTable(const uint32 loottable_id);
-	void LoadLootTables(const std::vector<uint32>& loottable_ids);
+	void LoadLootTables(const std::vector<uint32> in_loottable_ids);
 	void ClearLootTables();
 	void ReloadLootTables();
 	LoottableRepository::Loottable *GetLootTable(const uint32 loottable_id);
@@ -450,6 +453,7 @@ public:
 	BaseDataRepository::BaseData GetBaseData(uint8 level, uint8 class_id);
 	void LoadBaseData();
 	void ReloadBaseData();
+
 
 private:
 	bool      allow_mercs;

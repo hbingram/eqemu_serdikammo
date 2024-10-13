@@ -256,11 +256,6 @@ void Perl_Mob_ThrowingAttack(Mob* self, Mob* other) // @categories Skills and Re
 	self->ThrowingAttack(other);
 }
 
-void Perl_Mob_Heal(Mob* self)// @categories Script Utility
-{
-	self->Heal();
-}
-
 void Perl_Mob_HealDamage(Mob* self, int64_t amount)  // @categories Script Utility
 {
 	self->HealDamage(amount);
@@ -1157,6 +1152,16 @@ bool Perl_Mob_GetInvul(Mob* self) // @categories Script Utility, Stats and Attri
 void Perl_Mob_SetExtraHaste(Mob* self, int haste) // @categories Script Utility, Stats and Attributes
 {
 	self->SetExtraHaste(haste);
+}
+
+void Perl_Mob_SetExtraHaste(Mob* self, int haste, bool need_to_save) // @categories Script Utility, Stats and Attributes
+{
+	self->SetExtraHaste(haste, need_to_save);
+}
+
+int Perl_Mob_GetExtraHaste(Mob* self) // @categories Script Utility, Stats and Attributes
+{
+	return self->GetExtraHaste();
 }
 
 int Perl_Mob_GetHaste(Mob* self) // @categories Stats and Attributes
@@ -2304,14 +2309,14 @@ bool Perl_Mob_IsRunning(Mob* self) // @categories Script Utility
 	return self->IsRunning();
 }
 
-void Perl_Mob_SetBodyType(Mob* self, int32 type) // @categories Stats and Attributes
+void Perl_Mob_SetBodyType(Mob* self, uint8 body_type_id) // @categories Stats and Attributes
 {
-	self->SetBodyType(static_cast<bodyType>(type), false);
+	self->SetBodyType(body_type_id, false);
 }
 
-void Perl_Mob_SetBodyType(Mob* self, int32 type, bool overwrite_orig) // @categories Stats and Attributes
+void Perl_Mob_SetBodyType(Mob* self, uint8 body_type_id, bool overwrite_orig) // @categories Stats and Attributes
 {
-	self->SetBodyType(static_cast<bodyType>(type), overwrite_orig);
+	self->SetBodyType(body_type_id, overwrite_orig);
 }
 
 void Perl_Mob_SetDeltas(Mob* self, float delta_x, float delta_y, float delta_z, float delta_h) // @categories Script Utility
@@ -3420,6 +3425,149 @@ bool Perl_Mob_IsAlwaysAggro(Mob* self)
 	return self->AlwaysAggro();
 }
 
+std::string Perl_Mob_GetDeityName(Mob* self)
+{
+	return Deity::GetName(self->GetDeity());
+}
+
+perl::array Perl_Mob_GetBuffs(Mob* self)
+{
+	perl::array result;
+
+	const auto &buffs = self->GetBuffs();
+
+	for (int slot_id = 0; slot_id < self->GetMaxBuffSlots(); slot_id++) {
+		result.push_back(&buffs[slot_id]);
+	}
+
+	return result;
+}
+
+void Perl_Mob_RestoreEndurance(Mob* self)
+{
+	self->RestoreEndurance();
+}
+
+void Perl_Mob_RestoreHealth(Mob* self)
+{
+	self->RestoreHealth();
+}
+
+void Perl_Mob_RestoreMana(Mob* self)
+{
+	self->RestoreMana();
+}
+
+std::string Perl_Mob_GetArchetypeName(Mob* self)
+{
+	return self->GetArchetypeName();
+}
+
+bool Perl_Mob_IsIntelligenceCasterClass(Mob* self)
+{
+	return self->IsIntelligenceCasterClass();
+}
+
+bool Perl_Mob_IsPureMeleeClass(Mob* self)
+{
+	return self->IsPureMeleeClass();
+}
+
+bool Perl_Mob_IsWisdomCasterClass(Mob* self)
+{
+	return self->IsWisdomCasterClass();
+}
+
+std::string Perl_Mob_GetConsiderColor(Mob* self, Mob* other)
+{
+	return EQ::constants::GetConsiderColorName(self->GetLevelCon(other->GetLevel()));
+}
+
+std::string Perl_Mob_GetConsiderColor(Mob* self, uint8 other_level)
+{
+	return EQ::constants::GetConsiderColorName(self->GetLevelCon(other_level));
+}
+
+void Perl_Mob_AreaAttack(Mob* self, float distance)
+{
+	entity_list.AEAttack(self, distance);
+}
+
+void Perl_Mob_AreaAttack(Mob* self, float distance, int16 slot_id)
+{
+	entity_list.AEAttack(self, distance, slot_id);
+}
+
+void Perl_Mob_AreaAttack(Mob* self, float distance, int16 slot_id, int count)
+{
+	entity_list.AEAttack(self, distance, slot_id, count);
+}
+
+void Perl_Mob_AreaAttack(Mob* self, float distance, int16 slot_id, int count, bool is_from_spell)
+{
+	entity_list.AEAttack(self, distance, slot_id, count, is_from_spell);
+}
+
+void Perl_Mob_AreaAttack(Mob* self, float distance, int16 slot_id, int count, bool is_from_spell, int attack_rounds)
+{
+	entity_list.AEAttack(self, distance, slot_id, count, is_from_spell, attack_rounds);
+}
+
+void Perl_Mob_AreaSpell(Mob* self, Mob* center, uint16 spell_id)
+{
+	entity_list.AESpell(self, center, spell_id, true, 0, nullptr, true);
+}
+
+void Perl_Mob_AreaSpell(Mob* self, Mob* center, uint16 spell_id, bool affect_caster)
+{
+	entity_list.AESpell(self, center, spell_id, affect_caster, 0, nullptr, true);
+}
+
+void Perl_Mob_AreaSpell(Mob* self, Mob* center, uint16 spell_id, bool affect_caster, int16 resist_adjust)
+{
+	entity_list.AESpell(self, center, spell_id, affect_caster, resist_adjust, nullptr, true);
+}
+
+void Perl_Mob_AreaSpell(Mob* self, Mob* center, uint16 spell_id, bool affect_caster, int16 resist_adjust, int max_targets)
+{
+	entity_list.AESpell(self, center, spell_id, affect_caster, resist_adjust, &max_targets, true);
+}
+
+void Perl_Mob_MassGroupBuff(Mob* self, Mob* center, uint16 spell_id)
+{
+	entity_list.MassGroupBuff(self, center, spell_id);
+}
+
+void Perl_Mob_MassGroupBuff(Mob* self, Mob* center, uint16 spell_id, bool affect_caster)
+{
+	entity_list.MassGroupBuff(self, center, spell_id, affect_caster);
+}
+
+void Perl_Mob_BuffFadeBeneficial(Mob* self)
+{
+	self->BuffFadeBeneficial();
+}
+
+void Perl_Mob_BuffFadeDetrimental(Mob* self)
+{
+	self->BuffFadeDetrimental();
+}
+
+void Perl_Mob_BuffFadeDetrimentalByCaster(Mob* self, Mob* caster)
+{
+	self->BuffFadeDetrimentalByCaster(caster);
+}
+
+void Perl_Mob_BuffFadeNonPersistDeath(Mob* self)
+{
+	self->BuffFadeNonPersistDeath();
+}
+
+void Perl_Mob_BuffFadeSongs(Mob* self)
+{
+	self->BuffFadeSongs();
+}
+
 void perl_register_mob()
 {
 	perl::interpreter perl(PERL_GET_THX);
@@ -3436,6 +3584,15 @@ void perl_register_mob()
 	package.add("ApplySpellBuff", (void(*)(Mob*, int))&Perl_Mob_ApplySpellBuff);
 	package.add("ApplySpellBuff", (void(*)(Mob*, int, int))&Perl_Mob_ApplySpellBuff);
 	package.add("ApplySpellBuff", (void(*)(Mob*, int, int, int))&Perl_Mob_ApplySpellBuff);
+	package.add("AreaAttack", (void(*)(Mob*, float))&Perl_Mob_AreaAttack);
+	package.add("AreaAttack", (void(*)(Mob*, float, int16))&Perl_Mob_AreaAttack);
+	package.add("AreaAttack", (void(*)(Mob*, float, int16, int))&Perl_Mob_AreaAttack);
+	package.add("AreaAttack", (void(*)(Mob*, float, int16, int, bool))&Perl_Mob_AreaAttack);
+	package.add("AreaAttack", (void(*)(Mob*, float, int16, int, bool, int))&Perl_Mob_AreaAttack);
+	package.add("AreaSpell", (void(*)(Mob*, Mob*, uint16))&Perl_Mob_AreaSpell);
+	package.add("AreaSpell", (void(*)(Mob*, Mob*, uint16, bool))&Perl_Mob_AreaSpell);
+	package.add("AreaSpell", (void(*)(Mob*, Mob*, uint16, bool, int16))&Perl_Mob_AreaSpell);
+	package.add("AreaSpell", (void(*)(Mob*, Mob*, uint16, bool, int16, int))&Perl_Mob_AreaSpell);
 	package.add("Attack", (bool(*)(Mob*, Mob*))&Perl_Mob_Attack);
 	package.add("Attack", (bool(*)(Mob*, Mob*, int))&Perl_Mob_Attack);
 	package.add("Attack", (bool(*)(Mob*, Mob*, int, bool))&Perl_Mob_Attack);
@@ -3446,11 +3603,16 @@ void perl_register_mob()
 	package.add("BuffCount", (uint32(*)(Mob*, bool))&Perl_Mob_BuffCount);
 	package.add("BuffCount", (uint32(*)(Mob*, bool, bool))&Perl_Mob_BuffCount);
 	package.add("BuffFadeAll", &Perl_Mob_BuffFadeAll);
+	package.add("BuffFadeBeneficial", &Perl_Mob_BuffFadeBeneficial);
 	package.add("BuffFadeByEffect", (void(*)(Mob*, int))&Perl_Mob_BuffFadeByEffect);
 	package.add("BuffFadeByEffect", (void(*)(Mob*, int, int))&Perl_Mob_BuffFadeByEffect);
 	package.add("BuffFadeBySlot", (void(*)(Mob*, int))&Perl_Mob_BuffFadeBySlot);
 	package.add("BuffFadeBySlot", (void(*)(Mob*, int, bool))&Perl_Mob_BuffFadeBySlot);
 	package.add("BuffFadeBySpellID", &Perl_Mob_BuffFadeBySpellID);
+	package.add("BuffFadeDetrimental", &Perl_Mob_BuffFadeDetrimental);
+	package.add("BuffFadeDetrimentalByCaster", &Perl_Mob_BuffFadeDetrimentalByCaster);
+	package.add("BuffFadeNonPersistDeath", &Perl_Mob_BuffFadeNonPersistDeath);
+	package.add("BuffFadeSongs", &Perl_Mob_BuffFadeSongs);
 	package.add("CalculateDistance", (float(*)(Mob*, float, float, float))&Perl_Mob_CalculateDistance);
 	package.add("CalculateDistance", (float(*)(Mob*, Mob*))&Perl_Mob_CalculateDistance);
 	package.add("CalculateHeadingToTarget", &Perl_Mob_CalculateHeadingToTarget);
@@ -3592,6 +3754,7 @@ void perl_register_mob()
 	package.add("GetAggroRange", &Perl_Mob_GetAggroRange);
 	package.add("GetAllowBeneficial", &Perl_Mob_GetAllowBeneficial);
 	package.add("GetAppearance", &Perl_Mob_GetAppearance);
+	package.add("GetArchetypeName", &Perl_Mob_GetArchetypeName);
 	package.add("GetArmorTint", &Perl_Mob_GetArmorTint);
 	package.add("GetAssistRange", &Perl_Mob_GetAssistRange);
 	package.add("GetBaseGender", &Perl_Mob_GetBaseGender);
@@ -3605,6 +3768,7 @@ void perl_register_mob()
 	package.add("GetBucketExpires", &Perl_Mob_GetBucketExpires);
 	package.add("GetBucketKey", &Perl_Mob_GetBucketKey);
 	package.add("GetBucketRemaining", &Perl_Mob_GetBucketRemaining);
+	package.add("GetBuffs", &Perl_Mob_GetBuffs);
 	package.add("GetBuffSlotFromType", &Perl_Mob_GetBuffSlotFromType);
 	package.add("GetBuffSpellIDs", &Perl_Mob_GetBuffSpellIDs);
 	package.add("GetBuffStatValueBySpell", &Perl_Mob_GetBuffStatValueBySpell);
@@ -3620,6 +3784,8 @@ void perl_register_mob()
 	package.add("GetCloseMobList", (perl::array(*)(Mob*))&Perl_Mob_GetCloseMobList);
 	package.add("GetCloseMobList", (perl::array(*)(Mob*, float))&Perl_Mob_GetCloseMobList);
 	package.add("GetCloseMobList", (perl::array(*)(Mob*, float, bool))&Perl_Mob_GetCloseMobList);
+	package.add("GetConsiderColor", (std::string(*)(Mob*, Mob*))&Perl_Mob_GetConsiderColor);
+	package.add("GetConsiderColor", (std::string(*)(Mob*, uint8))&Perl_Mob_GetConsiderColor);
 	package.add("GetCorruption", &Perl_Mob_GetCorruption);
 	package.add("GetDefaultRaceSize", (float(*)(Mob*))&Perl_Mob_GetDefaultRaceSize);
 	package.add("GetDefaultRaceSize", (float(*)(Mob*, int))&Perl_Mob_GetDefaultRaceSize);
@@ -3628,6 +3794,7 @@ void perl_register_mob()
 	package.add("GetDR", &Perl_Mob_GetDR);
 	package.add("GetDamageAmount", &Perl_Mob_GetDamageAmount);
 	package.add("GetDeity", &Perl_Mob_GetDeity);
+	package.add("GetDeityName", &Perl_Mob_GetDeityName);
 	package.add("GetDisplayAC", &Perl_Mob_GetDisplayAC);
 	package.add("GetDrakkinDetails", &Perl_Mob_GetDrakkinDetails);
 	package.add("GetDrakkinHeritage", &Perl_Mob_GetDrakkinHeritage);
@@ -3637,6 +3804,7 @@ void perl_register_mob()
 	package.add("GetEquipment", &Perl_Mob_GetEquipment);
 	package.add("GetEquipmentColor", &Perl_Mob_GetEquipmentColor);
 	package.add("GetEquipmentMaterial", &Perl_Mob_GetEquipmentMaterial);
+	package.add("GetExtraHaste", &Perl_Mob_GetExtraHaste);
 	package.add("GetEyeColor1", &Perl_Mob_GetEyeColor1);
 	package.add("GetEyeColor2", &Perl_Mob_GetEyeColor2);
 	package.add("GetFR", &Perl_Mob_GetFR);
@@ -3779,7 +3947,7 @@ void perl_register_mob()
 	package.add("HasTwoHandBluntEquipped", &Perl_Mob_HasTwoHandBluntEquipped);
 	package.add("HasTwoHanderEquipped", &Perl_Mob_HasTwoHanderEquipped);
 	package.add("HateSummon", &Perl_Mob_HateSummon);
-	package.add("Heal", &Perl_Mob_Heal);
+	package.add("Heal", &Perl_Mob_RestoreHealth);
 	package.add("HealDamage", (void(*)(Mob*, int64_t))&Perl_Mob_HealDamage);
 	package.add("HealDamage", (void(*)(Mob*, int64_t, Mob*))&Perl_Mob_HealDamage);
 	package.add("InterruptSpell", (void(*)(Mob*))&Perl_Mob_InterruptSpell);
@@ -3813,6 +3981,7 @@ void perl_register_mob()
 	package.add("IsFindable", &Perl_Mob_IsFindable);
 	package.add("IsHorse", &Perl_Mob_IsHorse);
 	package.add("IsImmuneToSpell", &Perl_Mob_IsImmuneToSpell);
+	package.add("IsIntelligenceCasterClass", &Perl_Mob_IsIntelligenceCasterClass);
 	package.add("IsInvisible", (bool(*)(Mob*))&Perl_Mob_IsInvisible);
 	package.add("IsInvisible", (bool(*)(Mob*, Mob*))&Perl_Mob_IsInvisible);
 	package.add("IsMeleeDisabled", &Perl_Mob_IsMeleeDisabled);
@@ -3831,6 +4000,7 @@ void perl_register_mob()
 	package.add("IsPetOwnerClient", &Perl_Mob_IsPetOwnerClient);
 	package.add("IsPetOwnerNPC", &Perl_Mob_IsPetOwnerNPC);
 	package.add("IsPlayerCorpse", &Perl_Mob_IsPlayerCorpse);
+	package.add("IsPureMeleeClass", &Perl_Mob_IsPureMeleeClass);
 	package.add("IsRoamer", &Perl_Mob_IsRoamer);
 	package.add("IsRooted", &Perl_Mob_IsRooted);
 	package.add("IsRunning", &Perl_Mob_IsRunning);
@@ -3843,6 +4013,7 @@ void perl_register_mob()
 	package.add("IsTrackable", &Perl_Mob_IsTrackable);
 	package.add("IsTrap", &Perl_Mob_IsTrap);
 	package.add("IsWarriorClass", &Perl_Mob_IsWarriorClass);
+	package.add("IsWisdomCasterClass", &Perl_Mob_IsWisdomCasterClass);
 	package.add("Kill", &Perl_Mob_Kill);
 	package.add("MakePet", (void(*)(Mob*, uint16, const char*))&Perl_Mob_MakePet);
 	package.add("MakePet", (void(*)(Mob*, uint16, const char*, const char*))&Perl_Mob_MakePet);
@@ -3851,6 +4022,8 @@ void perl_register_mob()
 	package.add("MakeTempPet", (void(*)(Mob*, uint16, const char*, uint32))&Perl_Mob_MakeTempPet);
 	package.add("MakeTempPet", (void(*)(Mob*, uint16, const char*, uint32, Mob*))&Perl_Mob_MakeTempPet);
 	package.add("MakeTempPet", (void(*)(Mob*, uint16, const char*, uint32, Mob*, bool))&Perl_Mob_MakeTempPet);
+	package.add("MassGroupBuff", (void(*)(Mob*, Mob*, uint16))&Perl_Mob_MassGroupBuff);
+	package.add("MassGroupBuff", (void(*)(Mob*, Mob*, uint16, bool))&Perl_Mob_MassGroupBuff);
 	package.add("Mesmerize", &Perl_Mob_Mesmerize);
 	package.add("Message", &Perl_Mob_Message);
 	package.add("Message_StringID", (void(*)(Mob*, uint32, uint32))&Perl_Mob_Message_StringID);
@@ -3880,6 +4053,9 @@ void perl_register_mob()
 	package.add("RemoveNimbusEffect", &Perl_Mob_RemoveNimbusEffect);
 	package.add("RemovePet", &Perl_Mob_RemovePet);
 	package.add("ResistSpell", &Perl_Mob_ResistSpell);
+	package.add("RestoreEndurance", &Perl_Mob_RestoreEndurance);
+	package.add("RestoreHealth", &Perl_Mob_RestoreHealth);
+	package.add("RestoreMana", &Perl_Mob_RestoreMana);
 	package.add("ResumeTimer", &Perl_Mob_ResumeTimer);
 	package.add("RogueAssassinate", &Perl_Mob_RogueAssassinate);
 	package.add("RunTo", &Perl_Mob_RunTo);
@@ -3943,8 +4119,8 @@ void perl_register_mob()
 	package.add("SetAllowBeneficial", &Perl_Mob_SetAllowBeneficial);
 	package.add("SetAppearance", (void(*)(Mob*, int))&Perl_Mob_SetAppearance);
 	package.add("SetAppearance", (void(*)(Mob*, int, bool))&Perl_Mob_SetAppearance);
-	package.add("SetBodyType", (void(*)(Mob*, int32))&Perl_Mob_SetBodyType);
-	package.add("SetBodyType", (void(*)(Mob*, int32, bool))&Perl_Mob_SetBodyType);
+	package.add("SetBodyType", (void(*)(Mob*, uint8))&Perl_Mob_SetBodyType);
+	package.add("SetBodyType", (void(*)(Mob*, uint8, bool))&Perl_Mob_SetBodyType);
 	package.add("SetBucket", (void(*)(Mob*, std::string, std::string))&Perl_Mob_SetBucket);
 	package.add("SetBucket", (void(*)(Mob*, std::string, std::string, std::string))&Perl_Mob_SetBucket);
 	package.add("SetBuffDuration", (void(*)(Mob*, int))&Perl_Mob_SetBuffDuration);
@@ -3954,7 +4130,8 @@ void perl_register_mob()
 	package.add("SetDeltas", &Perl_Mob_SetDeltas);
 	package.add("SetDisableMelee", &Perl_Mob_SetDisableMelee);
 	package.add("SetEntityVariable", &Perl_Mob_SetEntityVariable);
-	package.add("SetExtraHaste", &Perl_Mob_SetExtraHaste);
+	package.add("SetExtraHaste", (void(*)(Mob*, int))&Perl_Mob_SetExtraHaste);
+	package.add("SetExtraHaste", (void(*)(Mob*, int, bool))&Perl_Mob_SetExtraHaste);
 	package.add("SetFlurryChance", &Perl_Mob_SetFlurryChance);
 	package.add("SetFlyMode", &Perl_Mob_SetFlyMode);
 	package.add("SetFollowID", &Perl_Mob_SetFollowID);

@@ -27,6 +27,7 @@
 #include "../common/repositories/bot_starting_items_repository.h"
 #include "../common/data_verification.h"
 #include "../common/repositories/criteria/content_filter_criteria.h"
+#include "../common/skill_caps.h"
 
 // This constructor is used during the bot create command
 Bot::Bot(NPCType *npcTypeData, Client* botOwner) : NPC(npcTypeData, nullptr, glm::vec4(), Ground, false), rest_timer(1), ping_timer(1) {
@@ -117,6 +118,8 @@ Bot::Bot(NPCType *npcTypeData, Client* botOwner) : NPC(npcTypeData, nullptr, glm
 	mana_regen = CalcManaRegen();
 	end_regen = CalcEnduranceRegen();
 
+	SetExtraHaste(database.botdb.GetBotExtraHasteByID(GetBotID()), false);
+
 	strcpy(name, GetCleanName());
 	memset(&_botInspectMessage, 0, sizeof(InspectMessage_Struct));
 }
@@ -201,7 +204,7 @@ Bot::Bot(
 		);
 	}
 
-	SetTaunting((GetClass() == Class::Warrior || GetClass() == Class::Paladin || GetClass() == Class::ShadowKnight) && (GetBotStance() == EQ::constants::stanceAggressive));
+	SetTaunting((GetClass() == Class::Warrior || GetClass() == Class::Paladin || GetClass() == Class::ShadowKnight) && (GetBotStance() == Stance::Aggressive));
 	SetPauseAI(false);
 
 	m_auto_defend_timer.Disable();
@@ -444,6 +447,8 @@ Bot::Bot(
 	}
 
 	cur_end = max_end;
+
+	SetExtraHaste(database.botdb.GetBotExtraHasteByID(GetBotID()), false);
 }
 
 Bot::~Bot() {
@@ -647,7 +652,7 @@ NPCType *Bot::FillNPCTypeStruct(
 	n->race = botRace;
 	n->class_ = botClass;
 	n->bodytype = 1;
-	n->deity = EQ::deity::DeityAgnostic;
+	n->deity = Deity::Agnostic1;
 	n->level = botLevel;
 	n->npc_spells_id = botSpellsID;
 	n->AC = ac;
@@ -707,7 +712,7 @@ NPCType *Bot::CreateDefaultNPCTypeStructForBot(
 	n->race = botRace;
 	n->class_ = botClass;
 	n->bodytype = 1;
-	n->deity = EQ::deity::DeityAgnostic;
+	n->deity = Deity::Agnostic1;
 	n->level = botLevel;
 	n->AC = 12;
 	n->ATK = 75;
@@ -1171,7 +1176,7 @@ uint16 Bot::GetPrimarySkillValue() {
 }
 
 uint16 Bot::MaxSkill(EQ::skills::SkillType skillid, uint16 class_, uint16 level) const {
-	return(content_db.GetSkillCap(class_, skillid, level));
+	return skill_caps.GetSkillCap(class_, skillid, level).cap;
 }
 
 uint32 Bot::GetTotalATK() {
@@ -1573,17 +1578,7 @@ bool Bot::Process()
 		return false;
 	}
 
-	if (mob_close_scan_timer.Check()) {
-		LogAIScanCloseDetail(
-			"is_moving [{}] bot [{}] timer [{}]",
-			moving ? "true" : "false",
-			GetCleanName(),
-			mob_close_scan_timer.GetDuration()
-		);
-
-		entity_list.ScanCloseMobs(close_mobs, this, IsMoving());
-	}
-
+	ScanCloseMobProcess();
 	SpellProcess();
 
 	if (tic_timer.Check()) {
@@ -1894,8 +1889,8 @@ void Bot::AI_Process()
 #define NOT_GUARDING (!GetGuardFlag())
 #define HOLDING (GetHoldFlag())
 #define NOT_HOLDING (!GetHoldFlag())
-#define PASSIVE (GetBotStance() == EQ::constants::stancePassive)
-#define NOT_PASSIVE (GetBotStance() != EQ::constants::stancePassive)
+#define PASSIVE (GetBotStance() == Stance::Passive)
+#define NOT_PASSIVE (GetBotStance() != Stance::Passive)
 
 	Client* bot_owner = (GetBotOwner() && GetBotOwner()->IsClient() ? GetBotOwner()->CastToClient() : nullptr);
 
@@ -2287,7 +2282,7 @@ bool Bot::TryMeditate() {
 	if (!IsMoving() && !spellend_timer.Enabled()) {
 		if (GetTarget() && AI_EngagedCastCheck()) {
 			BotMeditate(false);
-		} else if (GetArchetype() == ARCHETYPE_CASTER) {
+		} else if (GetArchetype() == Archetype::Caster) {
 			BotMeditate(true);
 		}
 
@@ -2413,14 +2408,14 @@ bool Bot::TryPrimaryWeaponAttacks(Mob* tar, const EQ::ItemInstance* p_item) {
 			}
 
 			if (GetAppearance() == eaDead) { return false; }
-			if (GetSpecialAbility(SPECATK_TRIPLE) && CheckBotDoubleAttack(true)) {
+			if (GetSpecialAbility(SpecialAbility::TripleAttack) && CheckBotDoubleAttack(true)) {
 
 				Attack(tar, EQ::invslot::slotPrimary, true);
 			}
 
 			if (GetAppearance() == eaDead) { return false; }
 			// quad attack, does this belong here??
-			if (GetSpecialAbility(SPECATK_QUAD) && CheckBotDoubleAttack(true)) {
+			if (GetSpecialAbility(SpecialAbility::QuadrupleAttack) && CheckBotDoubleAttack(true)) {
 				Attack(tar, EQ::invslot::slotPrimary, true);
 			}
 		}
@@ -2755,7 +2750,7 @@ Mob* Bot::GetBotTarget(Client* bot_owner)
 			}
 		}
 
-		if (GetArchetype() == ARCHETYPE_CASTER) {
+		if (GetArchetype() == Archetype::Caster) {
 			BotMeditate(true);
 		}
 	}
@@ -2973,7 +2968,7 @@ void Bot::SetOwnerTarget(Client* bot_owner) {
 	if (NOT_HOLDING && NOT_PASSIVE) {
 
 		auto attack_target = bot_owner->GetTarget();
-		if (attack_target) {
+		if (attack_target && HasBotAttackFlag(attack_target)) {
 
 			InterruptSpell();
 			WipeHateList();
@@ -3343,7 +3338,7 @@ void Bot::LoadAndSpawnAllZonedBots(Client* bot_owner) {
 					}
 
 					if (bot_spawn_limit >= 0 && spawned_bots_count >= bot_spawn_limit) {
-						database.SetGroupID(b->GetCleanName(), 0, b->GetBotID());
+						Group::RemoveFromGroup(b);
 						g->UpdatePlayer(bot_owner);
 						continue;
 					}
@@ -3355,7 +3350,7 @@ void Bot::LoadAndSpawnAllZonedBots(Client* bot_owner) {
 						bot_spawn_limit_class >= 0 &&
 						spawned_bot_count_class >= bot_spawn_limit_class
 					) {
-						database.SetGroupID(b->GetCleanName(), 0, b->GetBotID());
+						Group::RemoveFromGroup(b);
 						g->UpdatePlayer(bot_owner);
 						continue;
 					}
@@ -3375,7 +3370,7 @@ void Bot::LoadAndSpawnAllZonedBots(Client* bot_owner) {
 					}
 
 					if (!bot_owner->HasGroup()) {
-						database.SetGroupID(b->GetCleanName(), 0, b->GetBotID());
+						Group::RemoveFromGroup(b);
 					}
 				}
 			}
@@ -3632,8 +3627,8 @@ bool Bot::RemoveBotFromGroup(Bot* bot, Group* group) {
 			bot->SetFollowID(0);
 			if (group->DelMember(bot)) {
 				group->DelMemberOOZ(bot->GetName());
-				database.SetGroupID(bot->GetCleanName(), 0, bot->GetBotID());
-				if (group->GroupCount() < 1) {
+				Group::RemoveFromGroup(bot);
+				if (group->GroupCount() < 2) {
 					group->DisbandGroup();
 				}
 			}
@@ -3646,7 +3641,7 @@ bool Bot::RemoveBotFromGroup(Bot* bot, Group* group) {
 				group->members[i]->SetFollowID(0);
 			}
 			group->DisbandGroup();
-			database.SetGroupID(bot->GetCleanName(), 0, bot->GetBotID());
+			Group::RemoveFromGroup(bot);
 		}
 		Result = true;
 	}
@@ -4340,7 +4335,7 @@ void Bot::PerformTradeWithClient(int16 begin_slot_id, int16 end_slot_id, Client*
 	}
 }
 
-bool Bot::Death(Mob *killer_mob, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, KilledByTypes killed_by)
+bool Bot::Death(Mob *killer_mob, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, KilledByTypes killed_by, bool is_buff_tic)
 {
 	if (!NPC::Death(killer_mob, damage, spell_id, attack_skill)) {
 		return false;
@@ -5189,31 +5184,26 @@ void Bot::ProcessBotOwnerRefDelete(Mob* botOwner) {
 	}
 }
 
-int64 Bot::CalcMaxMana() {
-	switch(GetCasterClass()) {
-		case 'I':
-			max_mana = (GenerateBaseManaPoints() + itembonuses.Mana + spellbonuses.Mana + aabonuses.Mana + GroupLeadershipAAManaEnhancement());
-			max_mana += itembonuses.heroic_max_mana;
-		case 'W': {
-			max_mana = (GenerateBaseManaPoints() + itembonuses.Mana + spellbonuses.Mana + aabonuses.Mana + GroupLeadershipAAManaEnhancement());
-			max_mana += itembonuses.heroic_max_mana;
-			break;
-		}
-		case 'N': {
-			max_mana = 0;
-			break;
-		}
-		default: {
-			LogDebug("Invalid Class [{}] in CalcMaxMana", GetCasterClass());
-			max_mana = 0;
-			break;
-		}
+int64 Bot::CalcMaxMana()
+{
+	if (IsIntelligenceCasterClass() || IsWisdomCasterClass()) {
+		max_mana = (
+			GenerateBaseManaPoints() +
+			itembonuses.Mana +
+			spellbonuses.Mana +
+			aabonuses.Mana +
+			GroupLeadershipAAManaEnhancement()
+		);
+		max_mana += itembonuses.heroic_max_mana;
+	} else {
+		max_mana = 0;
 	}
 
-	if (current_mana > max_mana)
+	if (current_mana > max_mana) {
 		current_mana = max_mana;
-	else if (max_mana < 0)
+	} else if (max_mana < 0) {
 		max_mana = 0;
+	}
 
 	return max_mana;
 }
@@ -5481,13 +5471,13 @@ bool Bot::IsImmuneToSpell(uint16 spell_id, Mob *caster) {
 		if (!Result) {
 			if (caster->IsBot()) {
 				if (spells[spell_id].target_type == ST_Undead) {
-					if ((GetBodyType() != BT_SummonedUndead) && (GetBodyType() != BT_Undead) && (GetBodyType() != BT_Vampire)) {
+					if ((GetBodyType() != BodyType::SummonedUndead) && (GetBodyType() != BodyType::Undead) && (GetBodyType() != BodyType::Vampire)) {
 						LogSpellsDetail("Bot's target is not an undead");
 						return true;
 					}
 				}
 				if (spells[spell_id].target_type == ST_Summoned) {
-					if ((GetBodyType() != BT_SummonedUndead) && (GetBodyType() != BT_Summoned) && (GetBodyType() != BT_Summoned2) && (GetBodyType() != BT_Summoned3)) {
+					if ((GetBodyType() != BodyType::SummonedUndead) && (GetBodyType() != BodyType::Summoned) && (GetBodyType() != BodyType::Summoned2) && (GetBodyType() != BodyType::Summoned3)) {
 						LogSpellsDetail("Bot's target is not a summoned creature");
 						return true;
 					}
@@ -5528,94 +5518,114 @@ bool Bot::DoCastSpell(uint16 spell_id, uint16 target_id, EQ::spells::CastingSlot
 	return Result;
 }
 
-int32 Bot::GenerateBaseManaPoints() {
-	int32 bot_mana = 0;
-	int32 WisInt = 0;
+int32 Bot::GenerateBaseManaPoints()
+{
+	int32 bot_mana        = 0;
+	int32 WisInt          = 0;
 	int32 MindLesserFactor, MindFactor;
-	int wisint_mana = 0;
-	int base_mana = 0;
-	int ConvertedWisInt = 0;
-	switch(GetCasterClass()) {
-		case 'I':
-			WisInt = INT;
-			if (GetOwner() && GetOwner()->CastToClient() && GetOwner()->CastToClient()->ClientVersion() >= EQ::versions::ClientVersion::SoD && RuleB(Character, SoDClientUseSoDHPManaEnd)) {
-				if (WisInt > 100) {
-					ConvertedWisInt = (((WisInt - 100) * 5 / 2) + 100);
-					if (WisInt > 201)
-						ConvertedWisInt -= ((WisInt - 201) * 5 / 4);
-				}
-				else
-					ConvertedWisInt = WisInt;
+	int   wisint_mana     = 0;
+	int   base_mana       = 0;
+	int   ConvertedWisInt = 0;
 
-				if (GetLevel() < 41) {
-					wisint_mana = (GetLevel() * 75 * ConvertedWisInt / 1000);
-					base_mana = (GetLevel() * 15);
-				} else if (GetLevel() < 81) {
-					wisint_mana = ((3 * ConvertedWisInt) + ((GetLevel() - 40) * 15 * ConvertedWisInt / 100));
-					base_mana = (600 + ((GetLevel() - 40) * 30));
-				} else {
-					wisint_mana = (9 * ConvertedWisInt);
-					base_mana = (1800 + ((GetLevel() - 80) * 18));
+	if (IsIntelligenceCasterClass()) {
+		WisInt = INT;
+
+		if (
+			GetOwner() &&
+			GetOwner()->CastToClient() &&
+			GetOwner()->CastToClient()->ClientVersion() >= EQ::versions::ClientVersion::SoD &&
+			RuleB(Character, SoDClientUseSoDHPManaEnd)
+		) {
+			if (WisInt > 100) {
+				ConvertedWisInt = (((WisInt - 100) * 5 / 2) + 100);
+				if (WisInt > 201) {
+					ConvertedWisInt -= ((WisInt - 201) * 5 / 4);
 				}
-				bot_mana = (base_mana + wisint_mana);
 			} else {
-				if (((WisInt - 199) / 2) > 0)
-					MindLesserFactor = ((WisInt - 199) / 2);
-				else
-					MindLesserFactor = 0;
-
-				MindFactor = WisInt - MindLesserFactor;
-				if (WisInt > 100)
-					bot_mana = (((5 * (MindFactor + 20)) / 2) * 3 * GetLevel() / 40);
-				else
-					bot_mana = (((5 * (MindFactor + 200)) / 2) * 3 * GetLevel() / 100);
+				ConvertedWisInt = WisInt;
 			}
-			break;
-		case 'W':
-			WisInt = WIS;
-			if (GetOwner() && GetOwner()->CastToClient() && GetOwner()->CastToClient()->ClientVersion() >= EQ::versions::ClientVersion::SoD && RuleB(Character, SoDClientUseSoDHPManaEnd)) {
-				if (WisInt > 100) {
-					ConvertedWisInt = (((WisInt - 100) * 5 / 2) + 100);
-					if (WisInt > 201)
-						ConvertedWisInt -= ((WisInt - 201) * 5 / 4);
-				} else
-					ConvertedWisInt = WisInt;
 
-				if (GetLevel() < 41) {
-					wisint_mana = (GetLevel() * 75 * ConvertedWisInt / 1000);
-					base_mana = (GetLevel() * 15);
-				} else if (GetLevel() < 81) {
-					wisint_mana = ((3 * ConvertedWisInt) + ((GetLevel() - 40) * 15 * ConvertedWisInt / 100));
-					base_mana = (600 + ((GetLevel() - 40) * 30));
-				} else {
-					wisint_mana = (9 * ConvertedWisInt);
-					base_mana = (1800 + ((GetLevel() - 80) * 18));
-				}
-				bot_mana = (base_mana + wisint_mana);
+			if (GetLevel() < 41) {
+				wisint_mana = (GetLevel() * 75 * ConvertedWisInt / 1000);
+				base_mana   = (GetLevel() * 15);
+			} else if (GetLevel() < 81) {
+				wisint_mana = ((3 * ConvertedWisInt) + ((GetLevel() - 40) * 15 * ConvertedWisInt / 100));
+				base_mana   = (600 + ((GetLevel() - 40) * 30));
 			} else {
-				if (((WisInt - 199) / 2) > 0)
-					MindLesserFactor = ((WisInt - 199) / 2);
-				else
-					MindLesserFactor = 0;
-
-				MindFactor = (WisInt - MindLesserFactor);
-				if (WisInt > 100)
-					bot_mana = (((5 * (MindFactor + 20)) / 2) * 3 * GetLevel() / 40);
-				else
-					bot_mana = (((5 * (MindFactor + 200)) / 2) * 3 * GetLevel() / 100);
+				wisint_mana = (9 * ConvertedWisInt);
+				base_mana   = (1800 + ((GetLevel() - 80) * 18));
 			}
-			break;
-		default:
-			bot_mana = 0;
-			break;
+
+			bot_mana = (base_mana + wisint_mana);
+		} else {
+			if (((WisInt - 199) / 2) > 0) {
+				MindLesserFactor = ((WisInt - 199) / 2);
+			} else {
+				MindLesserFactor = 0;
+			}
+
+			MindFactor = WisInt - MindLesserFactor;
+			if (WisInt > 100) {
+				bot_mana = (((5 * (MindFactor + 20)) / 2) * 3 * GetLevel() / 40);
+			} else {
+				bot_mana = (((5 * (MindFactor + 200)) / 2) * 3 * GetLevel() / 100);
+			}
+		}
+	} else if (IsWisdomCasterClass()) {
+		WisInt = WIS;
+
+		if (
+			GetOwner() &&
+			GetOwner()->CastToClient() &&
+			GetOwner()->CastToClient()->ClientVersion() >= EQ::versions::ClientVersion::SoD &&
+			RuleB(Character, SoDClientUseSoDHPManaEnd)
+		) {
+			if (WisInt > 100) {
+				ConvertedWisInt = (((WisInt - 100) * 5 / 2) + 100);
+				if (WisInt > 201) {
+					ConvertedWisInt -= ((WisInt - 201) * 5 / 4);
+				}
+			} else {
+				ConvertedWisInt = WisInt;
+			}
+
+			if (GetLevel() < 41) {
+				wisint_mana = (GetLevel() * 75 * ConvertedWisInt / 1000);
+				base_mana   = (GetLevel() * 15);
+			} else if (GetLevel() < 81) {
+				wisint_mana = ((3 * ConvertedWisInt) + ((GetLevel() - 40) * 15 * ConvertedWisInt / 100));
+				base_mana   = (600 + ((GetLevel() - 40) * 30));
+			} else {
+				wisint_mana = (9 * ConvertedWisInt);
+				base_mana   = (1800 + ((GetLevel() - 80) * 18));
+			}
+
+			bot_mana = (base_mana + wisint_mana);
+		} else {
+			if (((WisInt - 199) / 2) > 0) {
+				MindLesserFactor = ((WisInt - 199) / 2);
+			} else {
+				MindLesserFactor = 0;
+			}
+
+			MindFactor = (WisInt - MindLesserFactor);
+			if (WisInt > 100) {
+				bot_mana = (((5 * (MindFactor + 20)) / 2) * 3 * GetLevel() / 40);
+			} else {
+				bot_mana = (((5 * (MindFactor + 200)) / 2) * 3 * GetLevel() / 100);
+			}
+		}
+	} else {
+		bot_mana = 0;
 	}
+
 	max_mana = bot_mana;
 	return bot_mana;
 }
 
 void Bot::GenerateSpecialAttacks() {
 	if (((GetClass() == Class::Monk) || (GetClass() == Class::Warrior) || (GetClass() == Class::Ranger) || (GetClass() == Class::Berserker))	&& (GetLevel() >= 60))
-		SetSpecialAbility(SPECATK_TRIPLE, 1);
+		SetSpecialAbility(SpecialAbility::TripleAttack, 1);
 }
 
 bool Bot::DoFinishedSpellSingleTarget(uint16 spell_id, Mob* spellTarget, EQ::spells::CastingSlot slot, bool& stopLogic) {
@@ -6219,11 +6229,10 @@ int64 Bot::CalcMaxHP() {
 	uint32 nd = 10000;
 	bot_hp += (GenerateBaseHitPoints() + itembonuses.HP);
 	bot_hp += itembonuses.heroic_max_hp;
-	nd += aabonuses.MaxHP;
+	nd += aabonuses.PercentMaxHPChange + spellbonuses.PercentMaxHPChange + itembonuses.PercentMaxHPChange;
 	bot_hp = ((float)bot_hp * (float)nd / (float)10000);
-	bot_hp += (spellbonuses.HP + aabonuses.HP);
+	bot_hp += (spellbonuses.FlatMaxHPChange + aabonuses.FlatMaxHPChange + itembonuses.FlatMaxHPChange);
 	bot_hp += GroupLeadershipAAHealthEnhancement();
-	bot_hp += (bot_hp * ((spellbonuses.MaxHPChange + itembonuses.MaxHPChange) / 10000.0f));
 	max_hp = bot_hp;
 	if (current_hp > max_hp)
 		current_hp = max_hp;
@@ -6585,14 +6594,14 @@ void Bot::ProcessBotGroupInvite(Client* c, std::string const& botName) {
 					entity_list.AddGroup(g);
 					database.SetGroupLeaderName(g->GetID(), c->GetName());
 					g->SaveGroupLeaderAA();
-					database.SetGroupID(c->GetName(), g->GetID(), c->CharacterID());
-					database.SetGroupID(invitedBot->GetCleanName(), g->GetID(), invitedBot->GetBotID());
+					g->AddToGroup(c);
+					g->AddToGroup(invitedBot);
 				} else {
 					delete g;
 				}
 			} else {
 				if (AddBotToGroup(invitedBot, c->GetGroup())) {
-					database.SetGroupID(invitedBot->GetCleanName(), c->GetGroup()->GetID(), invitedBot->GetBotID());
+					c->GetGroup()->AddToGroup(invitedBot);
 				}
 			}
 		} else if (invitedBot->HasGroup()) {
@@ -6743,7 +6752,7 @@ void Bot::CalcBotStats(bool showtext) {
 		SetLevel(GetBotOwner()->GetLevel());
 
 	for (int sindex = 0; sindex <= EQ::skills::HIGHEST_SKILL; ++sindex) {
-		skills[sindex] = content_db.GetSkillCap(GetClass(), (EQ::skills::SkillType)sindex, GetLevel());
+		skills[sindex] = skill_caps.GetSkillCap(GetClass(), (EQ::skills::SkillType)sindex, GetLevel()).cap;
 	}
 
 	taunt_timer.Start(1000);
@@ -6893,16 +6902,16 @@ bool EntityList::Bot_AICheckCloseBeneficialSpells(Bot* caster, uint8 iChance, fl
 		if ((botCasterClass == Class::Paladin || botCasterClass == Class::Beastlord || botCasterClass == Class::Ranger) && (caster->HasGroup() || caster->IsRaidGrouped())) {
 			float hpRatioToHeal = 25.0f;
 			switch(caster->GetBotStance()) {
-			case EQ::constants::stanceReactive:
-			case EQ::constants::stanceBalanced:
+			case Stance::Reactive:
+			case Stance::Balanced:
 				hpRatioToHeal = 50.0f;
 				break;
-			case EQ::constants::stanceBurn:
-			case EQ::constants::stanceBurnAE:
+			case Stance::Burn:
+			case Stance::AEBurn:
 				hpRatioToHeal = 20.0f;
 				break;
-			case EQ::constants::stanceAggressive:
-			case EQ::constants::stanceEfficient:
+			case Stance::Aggressive:
+			case Stance::Efficient:
 			default:
 				hpRatioToHeal = 25.0f;
 				break;
@@ -7351,23 +7360,23 @@ void EntityList::ShowSpawnWindow(Client* client, int Distance, bool NamedOnly) {
 
 					LastCon = CurrentCon;
 					switch(CurrentCon) {
-						case CON_GREEN: {
+						case ConsiderColor::Green: {
 							WindowText += "<c \"#00FF00\">";
 							break;
 						}
-						case CON_LIGHTBLUE: {
+						case ConsiderColor::LightBlue: {
 							WindowText += "<c \"#8080FF\">";
 							break;
 						}
-						case CON_BLUE: {
+						case ConsiderColor::DarkBlue: {
 							WindowText += "<c \"#2020FF\">";
 							break;
 						}
-						case CON_YELLOW: {
+						case ConsiderColor::Yellow: {
 							WindowText += "<c \"#FFFF00\">";
 							break;
 						}
-						case CON_RED: {
+						case ConsiderColor::Red: {
 							WindowText += "<c \"#FF0000\">";
 							break;
 						}
@@ -7636,11 +7645,7 @@ bool Bot::HasOrMayGetAggro() {
 }
 
 void Bot::SetDefaultBotStance() {
-	EQ::constants::StanceType defaultStance = EQ::constants::stanceBalanced;
-	if (GetClass() == Class::Warrior)
-		defaultStance = EQ::constants::stanceAggressive;
-
-	_botStance = defaultStance;
+	_botStance = GetClass() == Class::Warrior ? Stance::Aggressive : Stance::Balanced;
 }
 
 void Bot::BotGroupSay(Mob* speaker, const char* msg, ...) {
@@ -9214,4 +9219,4 @@ void Bot::DoItemClick(const EQ::ItemData *item, uint16 slot_id)
 
 }
 
-uint8 Bot::spell_casting_chances[SPELL_TYPE_COUNT][Class::PLAYER_CLASS_COUNT][EQ::constants::STANCE_TYPE_COUNT][cntHSND] = { 0 };
+uint8 Bot::spell_casting_chances[SPELL_TYPE_COUNT][Class::PLAYER_CLASS_COUNT][Stance::AEBurn][cntHSND] = { 0 };
