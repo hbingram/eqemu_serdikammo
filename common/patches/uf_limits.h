@@ -329,7 +329,7 @@ namespace UF
 			AltAbility = 0xFF
 		};
 
-		const int SPELL_ID_MAX = 28000;
+		const int SPELL_ID_MAX = 50000;
 		const int SPELLBOOK_SIZE = 720;
 		const int SPELL_GEM_COUNT = static_cast<uint32>(CastingSlot::MaxGems);
 		
