@@ -4243,13 +4243,13 @@ void Client::SendFullPopup(
 }
 
 /* BRYANT022324-START-: character sheet */
-void Client::ClientSendCharacterSheet(Mob* target, const char* title, const char* text)
+void Client::ClientSendCharacterSheet(Mob* target, const char* title, const char* text, ...)
 {
 	va_list argptr;
 	char    buffer[4096];
-	//va_start(argptr, text);
+	va_start(argptr, text);
 	vsnprintf(buffer, sizeof(buffer), text, argptr);
-	//va_end(argptr);
+	va_end(argptr);
 	size_t len = strlen(buffer);
 	auto  app = new EQApplicationPacket(OP_OnLevelMessage, sizeof(OnLevelMessage_Struct));
 	auto* olms = (OnLevelMessage_Struct*)app->pBuffer;
