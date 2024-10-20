@@ -1243,7 +1243,7 @@ public:
 	void SendPopupToClient(const char *Title, const char *Text, uint32 PopupID = 0, uint32 Buttons = 0, uint32 Duration = 0);
 	void SendFullPopup(const char *Title, const char *Text, uint32 PopupID = 0, uint32 NegativeID = 0, uint32 Buttons = 0, uint32 Duration = 0, const char *ButtonName0 = 0, const char *ButtonName1 = 0, uint32 SoundControls = 0);
 	/* BRYANT022324-START-: character sheet */
-	void ClientSendCharacterSheet(Mob* target, const char* title, const char* text);
+	void ClientSendCharacterSheet(Mob* target, const char* title, const char* text, ...);
 	/* BRYANT022324-END- */
 	void SendWindow(uint32 button_one_id, uint32 button_two_id, uint32 button_type, const char* button_one_text, const char* button_two_text, uint32 duration, int title_type, Mob* target, const char* title, const char* text, ...);
 	bool PendingTranslocate;
