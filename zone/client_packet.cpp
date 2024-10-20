@@ -4453,7 +4453,7 @@ void Client::Handle_OP_CastSpell(const EQApplicationPacket *app)
 				}
 				else
 				{
-					// BRYANT050324-START: check character statistics
+					// BRYANT050324-START: check character statistics for spell casting
 					if (spell.classes[0] != 0 && (((spell.classes[0] > 0) && (GetSTR() < spell.classes[0])) || ((spell.classes[0] < 0) && (GetSTR() >= abs(spell.classes[0])))))
 					{
 						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
