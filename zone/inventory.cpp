@@ -2301,6 +2301,13 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 	if (dst_slot_id <= EQ::invslot::EQUIPMENT_END) {// on Titanium and ROF2 /showhelm works even if sending helm slot
 		SendWearChange(matslot);
 	}
+	/* BRYANT120724-START-: send WearChange when removing equipment entirely */
+	matslot = SlotConvert2(src_slot_id);
+	if ((src_slot_id <= EQ::invslot::EQUIPMENT_END) && dst_inst == nullptr)
+	{
+		SendWearChange(matslot);
+	}
+	/* BRYANT120724-END- */
 
 	// Step 7: Save change to the database
 	if (src_slot_id == EQ::invslot::slotCursor) {
