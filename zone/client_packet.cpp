@@ -458,13 +458,18 @@ void ClearMappedOpcode(EmuOpcode op)
 int Client::HandlePacket(const EQApplicationPacket *app)
 {
 	auto o = eqs->GetOpcodeManager();
-	LogPacketClientServer(
-		"[{}] [{:#06x}] Size [{}] {}",
-		OpcodeManager::EmuToName(app->GetOpcode()),
-		o->EmuToEQ(app->GetOpcode()) == 0 ? app->GetProtocolOpcode() : o->EmuToEQ(app->GetOpcode()),
-		app->Size(),
-		(LogSys.IsLogEnabled(Logs::Detail, Logs::PacketClientServer) ? DumpPacketToString(app) : "")
-	);
+
+	/* BRYANT083123-START-: keep from logging OP_ClientUpdate and OP_FloatListThing */
+	if ((app->GetOpcode() != OP_ClientUpdate) && (app->GetOpcode() != OP_FloatListThing))
+	{
+		LogPacketClientServer(
+			"[{}] [{:#06x}] Size [{}] {}",
+			OpcodeManager::EmuToName(app->GetOpcode()),
+			o->EmuToEQ(app->GetOpcode()) == 0 ? app->GetProtocolOpcode() : o->EmuToEQ(app->GetOpcode()),
+			app->Size(),
+			(LogSys.IsLogEnabled(Logs::Detail, Logs::PacketClientServer) ? DumpPacketToString(app) : "")
+		);
+	}
 
 	EmuOpcode opcode = app->GetOpcode();
 	if (opcode == OP_AckPacket) {
@@ -4347,28 +4352,85 @@ void Client::Handle_OP_CastSpell(const EQApplicationPacket *app)
 		}
 	}
 
-	/* Memorized Spell */
-	if (m_pp.mem_spells[castspell->slot] && m_pp.mem_spells[castspell->slot] == castspell->spell_id) {
-		uint16 spell_to_cast = 0;
-		if (castspell->slot < EQ::spells::SPELL_GEM_COUNT) {
-			spell_to_cast = m_pp.mem_spells[castspell->slot];
-			if (spell_to_cast != castspell->spell_id) {
-				InterruptSpell(castspell->spell_id); //CHEATER!!!
-				return;
+		if(slot < CastingSlot::Item) {
+		uint16 spell_to_cast = castspell->spell_id;
+		if (IsValidSpell(spell_to_cast)) {
+			const SPDat_Spell_Struct& spell = spells[spell_to_cast];
+			if (spell.is_discipline)
+			{
+				InterruptSpell(spell_to_cast);
+			}
+			else
+			{
+
+				// BRYANT052223-START-: allow any class to use any spell
+				uint8 level_to_use = 255;
+				/*
+				for (int i = 0; i < sizeof(spell.classes); i++)
+				{
+					if (spell.classes[i] < level_to_use) { level_to_use = spell.classes[i]; }
+				}
+				*/
+				level_to_use = spell.classes[14]; // BRYANT050324: only beastlord class exists
+				// BRYANT052223-END-: allow any class to use any spell
+
+				if (level_to_use > GetLevel()) {
+					MessageString(Chat::Red, SPELL_LEVEL_TO_LOW);
+					InterruptSpell();
+				}
+				else
+				{
+					// BRYANT050324-START: check character statistics for spell casting
+					if (spell.classes[0] != 0 && (((spell.classes[0] > 0) && (GetSTR() < spell.classes[0])) || ((spell.classes[0] < 0) && (GetSTR() >= abs(spell.classes[0])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[1] != 0 && (((spell.classes[1] > 0) && (GetSTA() < spell.classes[1])) || ((spell.classes[1] < 0) && (GetSTA() >= abs(spell.classes[1])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[2] != 0 && (((spell.classes[2] > 0) && (GetAGI() < spell.classes[2])) || ((spell.classes[2] < 0) && (GetAGI() >= abs(spell.classes[2])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[3] != 0 && (((spell.classes[3] > 0) && (GetDEX() < spell.classes[3])) || ((spell.classes[3] < 0) && (GetDEX() >= abs(spell.classes[3])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[4] != 0 && (((spell.classes[4] > 0) && (GetWIS() < spell.classes[4])) || ((spell.classes[4] < 0) && (GetWIS() >= abs(spell.classes[4])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[5] != 0 && (((spell.classes[5] > 0) && (GetINT() < spell.classes[5])) || ((spell.classes[5] < 0) && (GetINT() >= abs(spell.classes[5])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					else if (spell.classes[6] != 0 && (((spell.classes[6] > 0) && (GetCHA() < spell.classes[6])) || ((spell.classes[6] < 0) && (GetCHA() >= abs(spell.classes[6])))))
+					{
+						MessageString(Chat::Red, SPELL_REQUIRES_STATS);
+						InterruptSpell();
+					}
+					// BRYANT050324-END
+
+					else
+					{
+						CastSpell(spell_to_cast, castspell->target_id, slot);
+					}
+				}
 			}
 		}
-		else if (castspell->slot >= EQ::spells::SPELL_GEM_COUNT) {
-			InterruptSpell();
-			return;
-		}
-
-		if (IsValidSpell(spell_to_cast)) {
-			CastSpell(spell_to_cast, castspell->target_id, slot);
-		}
-		else {
+		else
+		{
 			InterruptSpell();
 		}
 	}
+
 	/* Spell Slot or Potion Belt Slot */
 	else if (slot == CastingSlot::Item || slot == CastingSlot::PotionBelt)	// ITEM or POTION cast
 	{
@@ -11925,6 +11987,18 @@ void Client::Handle_OP_PopupResponse(const EQApplicationPacket *app)
 			}
 			return;
 			break;
+		
+		/* BRYANT022324-START-: character sheet */
+		case POPUPID_UPDATE_SHOWSTATSWINDOW + 10:
+			if (GetTarget() && GetTarget()->IsOfClientBot()) {
+				GetTarget()->SendCharacterSheet(this);
+			}
+			else {
+				SendCharacterSheet(this);
+			}
+			return;
+			break;
+		/* BRYANT022324-END- */
 
 		case POPUPID_DIAWIND_ONE:
 			if (EntityVariableExists(DIAWIND_RESPONSE_ONE_KEY)) {
@@ -14630,7 +14704,6 @@ void Client::Handle_OP_SpawnAppearance(const EQApplicationPacket *app)
 			playeraction = 4;
 			SetFeigned(false);
 		}
-
 		else {
 			LogError("Client [{}] :: unknown appearance [{}]", name, (int)sa->parameter);
 			return;

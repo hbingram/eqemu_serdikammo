@@ -4019,10 +4019,21 @@ void Client::LinkDead()
 }
 
 uint8 Client::SlotConvert(uint8 slot,bool bracer){
-	uint8 slot2 = 0; // why are we returning MainCharm instead of INVALID_INDEX? (must be a pre-charm segment...)
+	// BRYANT120123-START-: return something other than 0 on default
+	//uint8 slot2 = 0; // why are we returning MainCharm instead of INVALID_INDEX? (must be a pre-charm segment...)
+	uint8 slot2 = 255; // why are we returning MainCharm instead of INVALID_INDEX? (must be a pre-charm segment...)
+	// BRYANT120123-END-
 	if(bracer)
 		return EQ::invslot::slotWrist2;
 	switch(slot) {
+	// BRYANT120123-START-: handle primary and secondary WearChange
+	case EQ::invslot::slotPrimary:
+		slot2 = EQ::textures::weaponPrimary;
+		break;
+	case EQ::invslot::slotSecondary:
+		slot2 = EQ::textures::weaponSecondary;
+		break;
+	// BRYANT120123-END-
 	case EQ::textures::armorHead:
 		slot2 = EQ::invslot::slotHead;
 		break;
@@ -4049,8 +4060,19 @@ uint8 Client::SlotConvert(uint8 slot,bool bracer){
 }
 
 uint8 Client::SlotConvert2(uint8 slot){
-	uint8 slot2 = 0; // same as above...
+	// BRYANT120123-START-: return something other than 0 on default
+	//uint8 slot2 = 0; // same as above...
+	uint8 slot2 = 255; // same as above...
+	// BRYANT120123-END-
 	switch(slot){
+	// BRYANT120123-START-: handle primary and secondary WearChange
+	case EQ::invslot::slotPrimary:
+		slot2 = EQ::textures::weaponPrimary;
+		break;
+	case EQ::invslot::slotSecondary:
+		slot2 = EQ::textures::weaponSecondary;
+		break;
+	// BRYANT120123-END-
 	case EQ::invslot::slotHead:
 		slot2 = EQ::textures::armorHead;
 		break;
@@ -4532,6 +4554,27 @@ void Client::SendFullPopup(
 	QueuePacket(outapp);
 	safe_delete(outapp);
 }
+
+/* BRYANT022324-START-: character sheet */
+void Client::ClientSendCharacterSheet(Mob* target, const char* title, const char* text, ...)
+{
+	va_list argptr;
+	char    buffer[4096];
+	va_start(argptr, text);
+	vsnprintf(buffer, sizeof(buffer), text, argptr);
+	va_end(argptr);
+	size_t len = strlen(buffer);
+	auto  app = new EQApplicationPacket(OP_OnLevelMessage, sizeof(OnLevelMessage_Struct));
+	auto* olms = (OnLevelMessage_Struct*)app->pBuffer;
+	if (strlen(text) > (sizeof(olms->Text) - 1)) {
+		safe_delete(app);
+		return;
+	}
+	strcpy(olms->Title, title);
+	memcpy(olms->Text, buffer, len + 1);
+	FastQueuePacket(&app);
+}
+/* BRYANT022324-END- */
 
 void Client::SendWindow(
 	uint32 button_one_id,

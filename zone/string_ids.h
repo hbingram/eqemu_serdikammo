@@ -600,6 +600,8 @@
 #define GAIN_XP_BONUS				14541	//You gain experience (with a bonus)!
 #define GAIN_XP_PENALTY				14542	//You gain experience (with a penalty)!
 #define GENERIC_MISS				15041	//%1 missed %2
+#define SPELL_REQUIRES_STATS		16000	//Character statistics required
+#define DISC_REQUIRES_STATS			16001	//Character statistics required
 
 #endif
 

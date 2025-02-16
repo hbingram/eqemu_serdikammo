@@ -597,6 +597,7 @@ uint32 Mob::GetAppearanceValue(EmuAppearance in_appearance) {
 		case eaLooting: {
 			return Animation::Looting;
 		}
+		//to shup up compiler:
 		case _eaMaxAppearance: {
 			break;
 		}
@@ -1743,6 +1744,36 @@ void Mob::MakeSpawnUpdate(PlayerPositionUpdateServer_Struct* spu) {
 
 	spu->delta_heading = FloatToEQ10(m_Delta.w);
 }
+
+/* BRYANT022324-START-: character sheet */
+void Mob::SendCharacterSheet(Client* c)
+{
+	if (!IsOfClientBot()) {
+		return;
+	}
+	std::string charactersheet;
+	charactersheet += "hp:" + Strings::Commify(GetHP()) + "/" + Strings::Commify(GetMaxHP()) + " (+" + Strings::Commify(CastToClient()->CalcHPRegen(false)) + "/" + Strings::Commify(CastToClient()->CalcHPRegenCap()) + ")\r\n";
+	charactersheet += "mana:" + Strings::Commify(GetMana()) + "/" + Strings::Commify(GetMaxMana()) + " (+" + Strings::Commify(CastToClient()->CalcManaRegen(false)) + "/" + Strings::Commify(CastToClient()->CalcManaRegenCap()) + ")\r\n";
+	charactersheet += "end:" + Strings::Commify(GetEndurance()) + "/" + Strings::Commify(GetMaxEndurance()) + " (+" + Strings::Commify(CastToClient()->CalcEnduranceRegen(false)) + "/" + Strings::Commify(CastToClient()->CalcEnduranceRegenCap()) + ")\r\n";
+	charactersheet += "ac:" + Strings::Commify(GetDisplayAC()) + "\r\n";
+	charactersheet += "atk:" + Strings::Commify(CastToClient()->GetTotalATK()) + "\r\n";
+	charactersheet += "str:" + Strings::Commify(GetSTR()) + "/" + Strings::Commify(GetMaxSTR()) + "\r\n";
+	charactersheet += "sta:" + Strings::Commify(GetSTA()) + "/" + Strings::Commify(GetMaxSTA()) + "\r\n";
+	charactersheet += "agi:" + Strings::Commify(GetAGI()) + "/" + Strings::Commify(GetMaxAGI()) + "\r\n";
+	charactersheet += "dex:" + Strings::Commify(GetDEX()) + "/" + Strings::Commify(GetMaxDEX()) + "\r\n";
+	charactersheet += "int:" + Strings::Commify(GetINT()) + "/" + Strings::Commify(GetMaxINT()) + "\r\n";
+	charactersheet += "wis:" + Strings::Commify(GetWIS()) + "/" + Strings::Commify(GetMaxWIS()) + "\r\n";
+	charactersheet += "cha:" + Strings::Commify(GetCHA()) + "/" + Strings::Commify(GetMaxCHA()) + "\r\n";
+	charactersheet += "mr:" + Strings::Commify(GetMR()) + "/" + Strings::Commify(GetMaxMR()) + "\r\n";
+	charactersheet += "pr:" + Strings::Commify(GetPR()) + "/" + Strings::Commify(GetMaxPR()) + "\r\n";
+	charactersheet += "dr:" + Strings::Commify(GetDR()) + "/" + Strings::Commify(GetMaxDR()) + "\r\n";
+	charactersheet += "fr:" + Strings::Commify(GetFR()) + "/" + Strings::Commify(GetMaxFR()) + "\r\n";
+	charactersheet += "cr:" + Strings::Commify(GetCR()) + "/" + Strings::Commify(GetMaxCR()) + "\r\n";
+	std::string charactersheettitle;
+	charactersheettitle = "charactersheet";
+	c->ClientSendCharacterSheet(this, charactersheettitle.c_str(), charactersheet.c_str());
+}
+/* BRYANT022324-END- */
 
 void Mob::SendStatsWindow(Client* c, bool use_window)
 {

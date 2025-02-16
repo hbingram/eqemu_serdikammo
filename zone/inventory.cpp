@@ -1990,28 +1990,51 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 
 	// Step 4: Check for entity trade
 	if (dst_slot_id >= EQ::invslot::TRADE_BEGIN && dst_slot_id <= EQ::invslot::TRADE_END) {
+
+		/* BRYANT083123-START-: skip using EQ::invslot::slotCursor
 		if (src_slot_id != EQ::invslot::slotCursor) {
 			Kick("Trade with non-cursor item");
 			return false;
 		}
+		/* BRYANT083123-END- */
+
 		if (with) {
 			LogInventory("Trade item move from slot [{}] to slot [{}] (trade with [{}])", src_slot_id, dst_slot_id, with->GetName());
+
+			/* BRYANT083123-START-: skip using EQ::invslot::slotCursor
 			// Fill Trade list with items from cursor
 			if (!m_inv[EQ::invslot::slotCursor]) {
 				Message(Chat::Red, "Error: Cursor item not located on server!");
 				return false;
 			}
+			/* BRYANT083123-END- */
 
-			trade->AddEntity(dst_slot_id, move_in->number_in_stack);
+			// Add cursor item to trade bucket
+			// Also sends trade information to other client of trade session
+			if(RuleB(QueryServ, PlayerLogMoves)) { QSSwapItemAuditor(move_in); } // QS Audit
+
+			/* BRYANT083123-START-: skip using EQ::invslot::slotCursor */
+			trade->AddEntity(move_in->from_slot, dst_slot_id, move_in->number_in_stack);
+			//trade->AddEntity(dst_slot_id, move_in->number_in_stack);
+			/* BRYANT083123-END- */
+
+			/* BRYANT083123-START-: skip using EQ::invslot::slotCursor
+
 			if (dstitemid == 0)
 			{
 				SendCursorBuffer();
 			}
+			/* BRYANT083123-END- */
 
 			return true;
 		} else {
 			SummonItem(src_inst->GetID(), src_inst->GetCharges());
-			DeleteItemInInventory(EQ::invslot::slotCursor);
+			DeleteItemInInventory(
+			/* BRYANT083123-START-: skip using EQ::invslot::slotCursor */
+			move_in->from_slot
+			//EQ::invslot::slotCursor
+			/* BRYANT083123-END- */
+			);
 
 			return true;
 		}
@@ -2207,6 +2230,13 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 	if (dst_slot_id <= EQ::invslot::EQUIPMENT_END) {// on Titanium and ROF2 /showhelm works even if sending helm slot
 		SendWearChange(matslot);
 	}
+	/* BRYANT120724-START-: send WearChange when removing equipment entirely */
+	matslot = SlotConvert2(src_slot_id);
+	if ((src_slot_id <= EQ::invslot::EQUIPMENT_END) && dst_inst == nullptr)
+	{
+		SendWearChange(matslot);
+	}
+	/* BRYANT120724-END- */
 
 	// Step 7: Save change to the database
 	if (src_slot_id == EQ::invslot::slotCursor) {

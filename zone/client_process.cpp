@@ -1200,7 +1200,9 @@ void Client::OPMemorizeSpell(const EQApplicationPacket* app)
 
 	switch (m->scribing) {
 		case memSpellScribing: {
-			const auto* inst = m_inv[EQ::invslot::slotCursor];
+			// BRYANT102024-START-: Allow scribing from an inventory slot
+			//const auto* inst = m_inv[EQ::invslot::slotCursor];
+			const auto* inst = m_inv[m->reduction]; // using reduction for slotid of spell scroll
 
 			if (inst && inst->IsClassCommon()) {
 				const auto* item = inst->GetItem();
@@ -1216,14 +1218,17 @@ void Client::OPMemorizeSpell(const EQApplicationPacket* app)
 
 				if (item && item->Scroll.Effect == static_cast<int32>(m->spell_id)) {
 					ScribeSpell(m->spell_id, m->slot);
-					DeleteItemInInventory(EQ::invslot::slotCursor, 1, true);
+					//DeleteItemInInventory(EQ::invslot::slotCursor, 1, true);
+					DeleteItemInInventory(m->reduction, 1, true);
 				} else {
 					Message(Chat::Red, "Scribing spell: Item Instance exists but item does not or spell ids do not match.");
 				}
 			} else {
-				Message(Chat::Red, "Scribing a spell without an Item Instance on your cursor?");
+				//Message(Chat::Red, "Scribing a spell without an Item Instance on your cursor?");
+				Message(Chat::Red, "Scribing a spell without an Item Instance?");
 			}
 			break;
+			// BRYANT102024-END
 		}
 		case memSpellMemorize: {
 			if (HasSpellScribed(m->spell_id)) {
