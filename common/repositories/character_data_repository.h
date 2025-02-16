@@ -46,6 +46,40 @@ public:
      */
 
 	// Custom extended repository methods here
+	static uint32 GetSecondsSinceLastLogin(Database &db, const std::string& name)
+	{
+		auto results = db.QueryDatabase(
+			fmt::format(
+				"SELECT (UNIX_TIMESTAMP(NOW()) - last_login) FROM {} WHERE name = '{}'",
+				TableName(),
+				Strings::Escape(name)
+			)
+		);
+
+		if (!results.RowCount() || !results.Success()) {
+			return 0;
+		}
+
+		auto row = results.begin();
+
+		return Strings::ToUnsignedInt(row[0]);
+	}
+
+	static CharacterData FindByName(
+		Database& db,
+		const std::string& character_name
+	)
+	{
+		auto l = CharacterDataRepository::GetWhere(
+			db,
+			fmt::format(
+				"`name` = '{}' LIMIT 1",
+				Strings::Escape(character_name)
+			)
+		);
+
+		return l.empty() ? CharacterDataRepository::NewEntity() : l.front();
+	}
 };
 
 #endif //EQEMU_CHARACTER_DATA_REPOSITORY_H

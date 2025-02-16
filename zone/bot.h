@@ -39,17 +39,15 @@
 
 constexpr uint32 BOT_FOLLOW_DISTANCE_DEFAULT = 184; // as DSq value (~13.565 units)
 constexpr uint32 BOT_FOLLOW_DISTANCE_DEFAULT_MAX = 2500; // as DSq value (50 units)
-constexpr uint32 BOT_FOLLOW_DISTANCE_WALK = 1000; // as DSq value (~31.623 units)
 
 constexpr uint32 BOT_KEEP_ALIVE_INTERVAL = 5000; // 5 seconds
+
+constexpr uint32 MAG_EPIC_1_0 = 28034;
 
 extern WorldServer worldserver;
 
 constexpr int BotAISpellRange = 100; // TODO: Write a method that calcs what the bot's spell range is based on spell, equipment, AA, whatever and replace this
-constexpr int MaxSpellTimer = 15;
-constexpr int MaxDisciplineTimer = 10;
-constexpr int DisciplineReuseStart = MaxSpellTimer + 1;
-constexpr int MaxTimer = MaxSpellTimer + MaxDisciplineTimer;
+constexpr int NegativeItemReuse = -1; // Unlinked timer for items
 
 // nHSND	negative Healer/Slower/Nuker/Doter
 // pH		positive Healer
@@ -133,7 +131,7 @@ public:
 	Bot(uint32 botID, uint32 botOwnerCharacterID, uint32 botSpellsID, double totalPlayTime, uint32 lastZoneId, NPCType *npcTypeData, int32 expansion_bitmask);
 
 	//abstract virtual override function implementations requird by base abstract class
-	bool Death(Mob* killerMob, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill) override;
+	bool Death(Mob* killer_mob, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, KilledByTypes killed_by = KilledByTypes::Killed_NPC, bool is_buff_tic = false) override;
 	void Damage(Mob* from, int64 damage, uint16 spell_id, EQ::skills::SkillType attack_skill, bool avoidable = true, int8 buffslot = -1,
 		bool iBuffTic = false, eSpecialAttacks special = eSpecialAttacks::None) override;
 
@@ -223,6 +221,8 @@ public:
 	void SetPullFlag(bool flag = true) { m_pull_flag = flag; }
 	bool GetPullingFlag() const { return m_pulling_flag; }
 	bool GetReturningFlag() const { return m_returning_flag; }
+	bool GetIsUsingItemClick() { return is_using_item_click; }
+	void SetIsUsingItemClick(bool flag = true) { is_using_item_click = flag; }
 	bool UseDiscipline(uint32 spell_id, uint32 target);
 	uint8 GetNumberNeedingHealedInGroup(uint8 hpr, bool includePets, Raid* raid);
 	uint8 GetNumberNeedingHealedInRaidGroup(uint8& need_healed, uint8 hpr, bool includePets, Raid* raid);
@@ -286,6 +286,10 @@ public:
 	inline uint8 GetEndurancePercent() override { return (uint8)((float)cur_end / (float)max_end * 100.0f); }
 	void SetEndurance(int32 newEnd) override;
 	void DoEnduranceUpkeep();
+
+	void TryItemClick(uint16 slot_id);
+	EQ::ItemInstance* GetClickItem(uint16 slot_id);
+	void DoItemClick(const EQ::ItemData* inst, uint16 slot_id);
 
 	bool AI_AddBotSpells(uint32 bot_spell_id);
 	void AddSpellToBotList(
@@ -382,8 +386,8 @@ public:
 	bool CheckDataBucket(std::string bucket_name, const std::string& bucket_value, uint8 bucket_comparison);
 
 	// Bot Equipment & Inventory Class Methods
-	void BotTradeAddItem(const EQ::ItemInstance* inst, uint16 slot_id, std::string* error_message, bool save_to_database = true);
-	void EquipBot(std::string* error_message);
+	void BotTradeAddItem(const EQ::ItemInstance* inst, uint16 slot_id, bool save_to_database = true);
+	void EquipBot();
 	bool CheckLoreConflict(const EQ::ItemData* item);
 	void UpdateEquipmentLight() override
 		{
@@ -395,25 +399,20 @@ public:
 
 	// Static Class Methods
 	static Bot* LoadBot(uint32 botID);
-	static uint32 SpawnedBotCount(const uint32 owner_id, uint8 class_id = NO_CLASS);
+	static uint32 SpawnedBotCount(const uint32 owner_id, uint8 class_id = Class::None);
 	static void LevelBotWithClient(Client* client, uint8 level, bool sendlvlapp);
 
 	static bool IsBotAttackAllowed(Mob* attacker, Mob* target, bool& hasRuleDefined);
 	static Bot* GetBotByBotClientOwnerAndBotName(Client* c, const std::string& botName);
 	static void ProcessBotGroupInvite(Client* c, std::string const& botName);
 	static void ProcessBotGroupDisband(Client* c, const std::string& botName);
-	static void BotOrderCampAll(Client* c, uint8 class_id = NO_CLASS);
+	static void BotOrderCampAll(Client* c, uint8 class_id = Class::None);
 	static void ProcessBotInspectionRequest(Bot* inspectedBot, Client* client);
 	static void LoadAndSpawnAllZonedBots(Client* bot_owner);
 	static bool GroupHasBot(Group* group);
 	static Bot* GetFirstBotInGroup(Group* group);
 	static void ProcessClientZoneChange(Client* botOwner);
 	static void ProcessBotOwnerRefDelete(Mob* botOwner); // Removes a Client* reference when the Client object is destroyed
-	static int32 GetSpellRecastTimer(Bot *caster, int timer_index);
-	static bool CheckSpellRecastTimers(Bot *caster, int SpellIndex);
-	static int32 GetDisciplineRecastTimer(Bot *caster, int timer_index);
-	static bool CheckDisciplineRecastTimers(Bot *caster, int timer_index);
-	static uint32 GetDisciplineRemainingTime(Bot *caster, int timer_index);
 
 	//Raid methods
 	static void ProcessRaidInvite(Mob* invitee, Client* invitor, bool group_invite = false);
@@ -461,6 +460,8 @@ public:
 		uint8 gender
 	);
 
+	void AddBotStartingItems(uint16 race_id, uint8 class_id);
+
 	// Static Bot Group Methods
 	static bool AddBotToGroup(Bot* bot, Group* group);
 	static bool RemoveBotFromGroup(Bot* bot, Group* group);
@@ -483,7 +484,7 @@ public:
 	bool IsOfClientBotMerc() const override { return true; }
 
 	bool GetRangerAutoWeaponSelect() { return _rangerAutoWeaponSelect; }
-	EQ::constants::StanceType GetBotStance() { return _botStance; }
+	uint8 GetBotStance() { return _botStance; }
 	uint8 GetChanceToCastBySpellType(uint32 spellType);
 	bool GetBotEnforceSpellSetting() { return m_enforce_spell_settings; }
 	float GetBotCasterMaxRange(float melee_distance_max);
@@ -584,7 +585,7 @@ public:
 
 	// "Quest API" Methods
 	bool HasBotSpellEntry(uint16 spellid);
-	void ApplySpell(int spell_id, int duration = 0, ApplySpellType apply_type = ApplySpellType::Solo, bool allow_pets = false, bool is_raid_group_only = true);
+	void ApplySpell(int spell_id, int duration = 0, int level = -1, ApplySpellType apply_type = ApplySpellType::Solo, bool allow_pets = false, bool is_raid_group_only = true);
 	void BreakInvis();
 	void Escape();
 	void Fling(float value, float target_x, float target_y, float target_z, bool ignore_los = false, bool clip_through_walls = false, bool calculate_speed = false);
@@ -593,7 +594,7 @@ public:
 	int32 GetAugmentIDAt(int16 slot_id, uint8 augslot);
 	int32 GetRawItemAC();
 	void SendSpellAnim(uint16 targetid, uint16 spell_id);
-	void SetSpellDuration(int spell_id, int duration = 0, ApplySpellType apply_type = ApplySpellType::Solo, bool allow_pets = false, bool is_raid_group_only = true);
+	void SetSpellDuration(int spell_id, int duration = 0, int level = -1, ApplySpellType apply_type = ApplySpellType::Solo, bool allow_pets = false, bool is_raid_group_only = true);
 
 	// "SET" Class Methods
 	void SetBotSpellID(uint32 newSpellID);
@@ -603,16 +604,26 @@ public:
 	void SetBotCharmer(bool c) { _botCharmer = c; }
 	void SetPetChooser(bool p) { _petChooser = p; }
 	void SetBotOwner(Mob* botOwner) { this->_botOwner = botOwner; }
-	void SetRangerAutoWeaponSelect(bool enable) { GetClass() == RANGER ? _rangerAutoWeaponSelect = enable : _rangerAutoWeaponSelect = false; }
-	void SetBotStance(EQ::constants::StanceType botStance) {
-		if (botStance >= EQ::constants::stancePassive && botStance <= EQ::constants::stanceBurnAE)
-			_botStance = botStance;
-		else
-			_botStance = EQ::constants::stancePassive;
-	}
+	void SetRangerAutoWeaponSelect(bool enable) { GetClass() == Class::Ranger ? _rangerAutoWeaponSelect = enable : _rangerAutoWeaponSelect = false; }
+	void SetBotStance(uint8 stance_id) { _botStance = Stance::IsValid(stance_id) ? stance_id : Stance::Passive; }
 	void SetBotCasterRange(uint32 bot_caster_range) { m_bot_caster_range = bot_caster_range; }
-	void SetSpellRecastTimer(int timer_index, int32 recast_delay);
-	void SetDisciplineRecastTimer(int timer_index, int32 recast_delay);
+	uint32 GetSpellRecastTimer(uint16 spell_id = 0);
+	bool CheckSpellRecastTimer(uint16 spell_id = 0);
+	uint32 GetSpellRecastRemainingTime(uint16 spell_id = 0);
+	void SetSpellRecastTimer(uint16 spell_id, int32 recast_delay = 0);
+	uint32 CalcSpellRecastTimer(uint16 spell_id);
+	uint32 GetDisciplineReuseTimer(uint16 spell_id = 0);
+	bool CheckDisciplineReuseTimer(uint16 spell_id = 0);
+	uint32 GetDisciplineReuseRemainingTime(uint16 spell_id = 0);
+	void SetDisciplineReuseTimer(uint16 spell_id, int32 reuse_timer = 0);
+	uint32 GetItemReuseTimer(uint32 item_id = 0);
+	bool CheckItemReuseTimer(uint32 item_id = 0);
+	void SetItemReuseTimer(uint32 item_id, uint32 reuse_timer = 0);
+	void ClearDisciplineReuseTimer(uint16 spell_id = 0);
+	void ClearItemReuseTimer(uint32 item_id = 0);
+	void ClearSpellRecastTimer(uint16 spell_id = 0);
+	uint32 GetItemReuseRemainingTime(uint32 item_id = 0);
+	void ClearExpiredTimers();
 	void SetAltOutOfCombatBehavior(bool behavior_flag) { _altoutofcombatbehavior = behavior_flag;}
 	void SetShowHelm(bool showhelm) { _showhelm = showhelm; }
 	void SetBeardColor(uint8 value) { beardcolor = value; }
@@ -642,8 +653,6 @@ public:
 	bool UpdateBotSpellSetting(uint16 spell_id, BotSpellSetting* bs);
 	void SetBotEnforceSpellSetting(bool enforcespellsettings, bool save = false);
 	bool GetBotEnforceSpellSetting() const { return m_enforce_spell_settings; }
-
-	std::string CreateSayLink(Client* botOwner, const char* message, const char* name);
 
 	// Class Destructors
 	~Bot() override;
@@ -690,7 +699,8 @@ public:
 		uint32 attack
 	);
 	void BotRemoveEquipItem(uint16 slot_id);
-	void RemoveBotItemBySlot(uint16 slot_id, std::string* error_message);
+	void RemoveBotItemBySlot(uint16 slot_id
+);
 	void AddBotItem(
 		uint16 slot_id,
 		uint32 item_id,
@@ -712,7 +722,8 @@ public:
 
 	// New accessors for BotDatabase access
 	bool DeleteBot();
-	uint32* GetTimers() { return timers; }
+	std::vector<BotTimer_Struct> GetBotTimers() { return bot_timers; }
+	void SetBotTimers(std::vector<BotTimer_Struct> timers) { bot_timers = timers; }
 	uint32 GetLastZoneID() const { return _lastZoneId; }
 	int32 GetBaseAC() const { return _baseAC; }
 	int32 GetBaseATK() const { return _baseATK; }
@@ -737,7 +748,7 @@ public:
 	//Raid additions
 	Raid* p_raid_instance;
 
-	static uint8 spell_casting_chances[SPELL_TYPE_COUNT][PLAYER_CLASS_COUNT][EQ::constants::STANCE_TYPE_COUNT][cntHSND];
+	static uint8 spell_casting_chances[SPELL_TYPE_COUNT][Class::PLAYER_CLASS_COUNT][Stance::AEBurn][cntHSND];
 
 	bool BotCastMez(Mob* tar, uint8 botLevel, bool checked_los, BotSpell& botSpell, Raid* raid);
 	bool BotCastHeal(Mob* tar, uint8 botLevel, uint8 botClass, BotSpell& botSpell, Raid* raid);
@@ -765,12 +776,15 @@ public:
 	Mob* SetFollowMob(Client* leash_owner);
 
 	Mob* GetBotTarget(Client* bot_owner);
-	void AcquireBotTarget(Group* bot_group, Raid* raid, Client* leash_owner, float leash_distance);
-	void SetBotTarget(Client* bot_owner, Raid* raid, Group* bot_group, Client* leash_owner, float lo_distance, float leash_distance, bool bo_alt_combat);
-	void SetLeashOwnerTarget(Client* leash_owner, Client* bot_owner, float lo_distance, float leash_distance);
 	void SetOwnerTarget(Client* bot_owner);
-	void SetBotGroupTarget(const Client* bot_owner, Client* leash_owner, float lo_distance, float leash_distance, Mob* const& bg_member, Mob* bgm_target);
-	bool IsValidTarget(Client* bot_owner, Client* leash_owner, float lo_distance, float leash_distance, bool bo_alt_combat, Mob* tar, float tar_distance);
+	bool IsValidTarget(
+		Client* bot_owner,
+		Client* leash_owner,
+		float lo_distance,
+		float leash_distance,
+		Mob* tar,
+		float tar_distance
+	);
 
 	bool PullingFlagChecks(Client* bot_owner);
 	bool ReturningFlagChecks(Client* bot_owner, float fm_distance);
@@ -827,6 +841,7 @@ protected:
 
 	std::vector<BotSpells_Struct> AIBot_spells;
 	std::vector<BotSpells_Struct> AIBot_spells_enforced;
+	std::vector<BotTimer_Struct> bot_timers;
 
 private:
 	// Class Members
@@ -850,7 +865,7 @@ private:
 	std::string _suffix;
 	uint32 _lastZoneId;
 	bool _rangerAutoWeaponSelect;
-	EQ::constants::StanceType _botStance;
+	uint8 _botStance;
 	unsigned int RestRegenHP;
 	unsigned int RestRegenMana;
 	unsigned int RestRegenEndurance;
@@ -860,11 +875,10 @@ private:
 	int32	cur_end;
 	int32	max_end;
 	int32	end_regen;
-	uint32 timers[MaxTimer];
 
 	Timer m_evade_timer; // can be moved to pTimers at some point
-	Timer m_alt_combat_hate_timer;
 	Timer m_auto_defend_timer;
+	Timer auto_save_timer;
 	bool m_dirtyautohaters;
 	bool m_guard_flag;
 	bool m_hold_flag;
@@ -873,7 +887,7 @@ private:
 	bool m_pull_flag;
 	bool m_pulling_flag;
 	bool m_returning_flag;
-	eStandingPetOrder m_previous_pet_order;
+	bool is_using_item_click;
 	uint32 m_bot_caster_range;
 	BotCastingRoles m_CastingRoles;
 
@@ -921,7 +935,7 @@ private:
 	void SetReturningFlag(bool flag = true) { m_returning_flag = flag; }
 
 	// Private "Inventory" Methods
-	void GetBotItems(EQ::InventoryProfile &inv, std::string* error_message);
+	void GetBotItems(EQ::InventoryProfile &inv);
 	void BotAddEquipItem(uint16 slot_id, uint32 item_id);
 
 	// Private "Pet" Methods

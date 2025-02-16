@@ -3,23 +3,20 @@
 
 extern WorldServer worldserver;
 
-#include "../corpse.h"
-
 void command_summon(Client *c, const Seperator *sep)
 {
-	int arguments = sep->argnum;
+	const int arguments = sep->argnum;
 	if (!arguments && !c->GetTarget()) {
 		c->Message(Chat::White, "Usage: #summon - Summon your target, if you have one, to your position");
 		c->Message(Chat::White, "Usage: #summon [Character Name] - Summon a character by name to your position");
-		c->Message(Chat::White, "Note: You may also summon your target if you have one.");
 		return;
 	}
 
-	Mob* target;
+	Mob *t = c;
 
 	if (arguments == 1) {
 		std::string character_name = sep->arg[1];
-		auto character_id = database.GetCharacterID(character_name.c_str());
+		auto character_id = database.GetCharacterID(character_name);
 		if (!character_id) {
 			c->Message(
 				Chat::White,
@@ -31,9 +28,9 @@ void command_summon(Client *c, const Seperator *sep)
 			return;
 		}
 
-		auto search_client = entity_list.GetClientByName(character_name.c_str());
-		if (search_client) {
-			target = search_client->CastToMob();
+		Client *s = entity_list.GetClientByName(character_name.c_str());
+		if (s) {
+			t = s->CastToMob();
 		} else {
 			if (!worldserver.Connected()) {
 				c->Message(Chat::White, "World server is currently disconnected.");
@@ -42,33 +39,41 @@ void command_summon(Client *c, const Seperator *sep)
 
 			auto pack = new ServerPacket(ServerOP_ZonePlayer, sizeof(ServerZonePlayer_Struct));
 			auto szp = (ServerZonePlayer_Struct *) pack->pBuffer;
+
 			strn0cpy(szp->adminname, c->GetName(), sizeof(szp->adminname));
-			szp->adminrank = c->Admin();
-			szp->ignorerestrictions = 2;
 			strn0cpy(szp->name, character_name.c_str(), sizeof(szp->name));
 			strn0cpy(szp->zone, zone->GetShortName(), sizeof(szp->zone));
-			szp->x_pos = c->GetX();
-			szp->y_pos = c->GetY();
-			szp->z_pos = c->GetZ();
-			szp->instance_id = zone->GetInstanceID();
+
+			szp->adminrank          = c->Admin();
+			szp->ignorerestrictions = 2;
+			szp->instance_id        = zone->GetInstanceID();
+			szp->x_pos              = c->GetX();
+			szp->y_pos              = c->GetY();
+			szp->z_pos              = c->GetZ();
+
 			worldserver.SendPacket(pack);
 			safe_delete(pack);
 			return;
 		}
 	} else if (c->GetTarget()) {
-		target = c->GetTarget();
+		t = c->GetTarget();
 	}
-	
-	if (c == target) {
+
+	if (c == t) {
 		c->Message(Chat::White, "You cannot summon yourself.");
 		return;
 	}
-	
+
+	if (!t) {
+		c->Message(Chat::White, "You must have a target to summon.");
+		return;
+	}
+
 	c->Message(
 		Chat::White,
 		fmt::format(
 			"Summoning {} to {:.2f}, {:.2f}, {:.2f} in {} ({}).",
-			c->GetTargetDescription(target),
+			c->GetTargetDescription(t),
 			c->GetX(),
 			c->GetY(),
 			c->GetZ(),
@@ -77,8 +82,8 @@ void command_summon(Client *c, const Seperator *sep)
 		).c_str()
 	);
 
-	if (target->IsClient()) {
-		target->CastToClient()->MovePC(
+	if (t->IsClient()) {
+		t->CastToClient()->MovePC(
 			zone->GetZoneID(),
 			zone->GetInstanceID(),
 			c->GetX(),
@@ -86,15 +91,10 @@ void command_summon(Client *c, const Seperator *sep)
 			c->GetZ(),
 			c->GetHeading(),
 			2,
-			GMSummon
+			c->GetHideMe() ? GMHiddenSummon : GMSummon
 		);
 		return;
 	}
 
-	target->GMMove(c->GetPosition());
-
-	if (target->IsNPC()) {
-		target->CastToNPC()->SaveGuardSpot(glm::vec4(0.0f));
-	}
+	t->GMMove(c->GetPosition());
 }
-

@@ -27,55 +27,6 @@ class Client;
 class EQApplicationPacket;
 class Mob;
 
-enum {	//raid packet types:
-	raidAdd = 0,
-	raidRemove2 = 1,	//parameter=0
-	raidMemberNameChange	= 2,
-	raidRemove1 = 3,	//parameter=0xFFFFFFFF
-	raidNoLongerLeader		= 4,
-	raidDisband				= 5,
-	raidMembers = 6,	//len 395+, details + members list
-	raidNoAssignLeadership	= 7,
-	raidCreate = 8,		//len 72
-	raidUnknown				= 9, // unused?
-	raidNoRaid = 10,		//parameter=0
-	raidChangeLootType		= 11,
-	raidStringID			= 12,
-	raidChangeGroupLeader = 13,	//136 raid leader, new group leader, group_id?
-	raidSetLeaderAbilities	= 14,	//472
-	raidSetLeaderData		= 15,	// 14,15 SoE names, not sure on difference, 14 packet has 0x100 bytes 15 0x214 in addition to raid general
-	raidChangeGroup = 16,	//?? len 136 old leader, new leader, 0 (preceeded with a remove2)
-	raidLock = 17,		//len 136 leader?, leader, 0
-	raidUnlock = 18,		//len 136 leader?, leader, 0
-	raidRedStringID			= 19,
-	raidSetLeader			= 20,	//len 388, contains 'details' struct without members; also used for "invite to raid"
-	raidMakeLeader			= 30,
-	raidSetMotd				= 35,
-	raidSetNote				= 36,
-};
-
-
-enum { //raid command types
-	RaidCommandInviteIntoExisting = 0, //in use
-	RaidCommandAcceptInvite = 1, //in use
-	RaidCommandInvite = 3, //in use
-	RaidCommandDisband = 5, //in use
-	RaidCommandMoveGroup = 6, //in use
-	RaidCommandRemoveGroupLeader = 7,
-	RaidCommandRaidLock = 8, //in use
-	RaidCommandRaidUnlock = 9, //in use
-	RaidCommandLootType = 20, //in use
-	RaidCommandAddLooter = 21, //in use
-	RaidCommandRemoveLooter = 22, //in use
-	RaidCommandMakeLeader = 30,
-	RaidCommandInviteFail = 31, //already in raid, waiting on invite from other raid, etc
-	RaidCommandLootType2 = 32, //in use
-	RaidCommandAddLooter2 = 33, //in use
-	RaidCommandRemoveLooter2 = 34, //in use
-	RaidCommandSetMotd = 35,
-	RaidCommandSetNote = 36,
-};
-
 enum {
 	FindNextMarkerSlot     = 1,
 	FindNextAssisterSlot   = 2,
@@ -124,19 +75,19 @@ const uint32 RAID_GROUPLESS = 0xFFFFFFFF;
 #define MAX_NO_RAID_MAIN_MARKERS 3
 
 struct RaidMember{
-	char member_name[64];
-	Client *member;
-	uint32 group_number;
-	uint8 _class;
-	uint8 level;
-	char note[64];
-	bool is_group_leader;
-	bool is_raid_leader;
-	bool is_looter;
-	uint8 main_marker;
-	uint8 main_assister;
-	bool is_bot = false;
-	bool is_raid_main_assist_one = false;
+	char member_name[64]{ 0 };
+	Client* member{ nullptr };
+	uint32 group_number{ RAID_GROUPLESS };
+	uint8 _class{ 0 };
+	uint8 level{ 0 };
+	std::string note{};
+	bool is_group_leader{ false };
+	bool is_raid_leader{ false };
+	bool is_looter{ false };
+	uint8 main_marker{ 0 };
+	uint8 main_assister{ 0 };
+	bool is_bot{ false };
+	bool is_raid_main_assist_one{false};
 };
 
 struct GroupMentor {
@@ -180,6 +131,7 @@ public:
 	void	SetNewRaidLeader(uint32 i);
 	bool    IsAssister(const char* who);
 	bool    IsMarker(const char* who);
+	void    EmptyRaidMembers();
 
 	uint32	GetFreeGroup();
 	uint8	GroupCount(uint32 gid);
@@ -213,7 +165,7 @@ public:
 
 	void	RaidMessageString(Mob* sender, uint32 type, uint32 string_id, const char* message,const char* message2=0,const char* message3=0,const char* message4=0,const char* message5=0,const char* message6=0,const char* message7=0,const char* message8=0,const char* message9=0, uint32 distance = 0);
 	void	CastGroupSpell(Mob* caster,uint16 spellid, uint32 gid);
-	void	SplitExp(const uint64 exp, Mob* other);
+	void	SplitExp(ExpSource exp_source, const uint64 exp, Mob* other);
 	uint32	GetTotalRaidDamage(Mob* other);
 	void	BalanceHP(int32 penalty, uint32 gid, float range = 0, Mob* caster = nullptr, int32 limit = 0);
 	void	BalanceMana(int32 penalty, uint32 gid,  float range = 0, Mob* caster = nullptr, int32 limit = 0);
@@ -340,8 +292,8 @@ protected:
 	bool disbandCheck;
 	bool forceDisband;
 	std::string motd;
-	RaidLeadershipAA_Struct raid_aa;
-	GroupLeadershipAA_Struct group_aa[MAX_RAID_GROUPS];
+	RaidLeadershipAA_Struct raid_aa{};
+	GroupLeadershipAA_Struct group_aa[MAX_RAID_GROUPS]{};
 
 	GroupMentor group_mentor[MAX_RAID_GROUPS];
 

@@ -27,21 +27,18 @@
 #include "../common/rulesys.h"
 #include "../common/eqemu_exception.h"
 #include "../common/strings.h"
-#include "faction_association.h"
 #include "items.h"
-#include "npc_faction.h"
-#include "loot.h"
-#include "skill_caps.h"
 #include "spells.h"
-#include "base_data.h"
 #include "../common/content/world_content_service.h"
 #include "../common/zone_store.h"
 #include "../common/path_manager.h"
+#include "../common/events/player_event_logs.h"
 
-EQEmuLogSys LogSys;
+EQEmuLogSys         LogSys;
 WorldContentService content_service;
-ZoneStore zone_store;
-PathManager path;
+ZoneStore           zone_store;
+PathManager         path;
+PlayerEventLogs     player_event_logs;
 
 #ifdef _WINDOWS
 #include <direct.h>
@@ -172,6 +169,7 @@ int main(int argc, char **argv)
 
 	content_service.SetCurrentExpansion(RuleI(Expansion, CurrentExpansion));
 	content_service.SetDatabase(&database)
+		->SetContentDatabase(&content_db)
 		->SetExpansionContext()
 		->ReloadContentFlags();
 
@@ -183,25 +181,14 @@ int main(int argc, char **argv)
 
 	std::string hotfix_name = "";
 
-	bool load_all           = true;
-	bool load_items         = false;
-	bool load_factions      = false;
-	bool load_faction_assoc = false;
-	bool load_loot          = false;
-	bool load_skill_caps    = false;
-	bool load_spells        = false;
-	bool load_bd            = false;
+	bool load_all        = true;
+	bool load_items      = false;
+	bool load_loot       = false;
+	bool load_spells     = false;
 
 	if (argc > 1) {
 		for (int i = 1; i < argc; ++i) {
 			switch (argv[i][0]) {
-				case 'b':
-					if (strcasecmp("base_data", argv[i]) == 0) {
-						load_bd  = true;
-						load_all = false;
-					}
-					break;
-
 				case 'i':
 					if (strcasecmp("items", argv[i]) == 0) {
 						load_items = true;
@@ -209,32 +196,10 @@ int main(int argc, char **argv)
 					}
 					break;
 
-				case 'f':
-					if (strcasecmp("factions", argv[i]) == 0) {
-						load_factions = true;
-						load_all      = false;
-					}
-					break;
-
-				case 'l':
-					if (strcasecmp("loot", argv[i]) == 0) {
-						load_loot = true;
-						load_all  = false;
-					}
-					break;
-
 				case 's':
-					if (strcasecmp("skill_caps", argv[i]) == 0) {
-						load_skill_caps = true;
-						load_all        = false;
-					}
-					else if (strcasecmp("spells", argv[i]) == 0) {
+					if (strcasecmp("spells", argv[i]) == 0) {
 						load_spells = true;
 						load_all    = false;
-					}
-					else if (strcasecmp("faction_assoc", argv[i]) == 0) {
-						load_faction_assoc = true;
-						load_all = false;
 					}
 					break;
 				case '-': {
@@ -267,59 +232,10 @@ int main(int argc, char **argv)
 		}
 	}
 
-	if (load_all || load_factions) {
-		try {
-			LoadFactions(&content_db, hotfix_name);
-		} catch (std::exception &ex) {
-			LogError("{}", ex.what());
-			return 1;
-		}
-	}
-
-	if (load_all || load_loot) {
-		LogInfo("Loading loot");
-		try {
-			LoadLoot(&content_db, hotfix_name);
-		} catch (std::exception &ex) {
-			LogError("{}", ex.what());
-			return 1;
-		}
-	}
-
-	if (load_all || load_skill_caps) {
-		LogInfo("Loading skill caps");
-		try {
-			LoadSkillCaps(&content_db, hotfix_name);
-		} catch (std::exception &ex) {
-			LogError("{}", ex.what());
-			return 1;
-		}
-	}
-
 	if (load_all || load_spells) {
 		LogInfo("Loading spells");
 		try {
 			LoadSpells(&content_db, hotfix_name);
-		} catch (std::exception &ex) {
-			LogError("{}", ex.what());
-			return 1;
-		}
-	}
-
-	if (load_all || load_faction_assoc) {
-		LogInfo("Loading faction associations");
-		try {
-			LoadFactionAssociation(&content_db, hotfix_name);
-		} catch(std::exception &ex) {
-			LogError("{}", ex.what());
-			return 1;
-		}
-	}
-
-	if (load_all || load_bd) {
-		LogInfo("Loading base data");
-		try {
-			LoadBaseData(&content_db, hotfix_name);
 		} catch (std::exception &ex) {
 			LogError("{}", ex.what());
 			return 1;

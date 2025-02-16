@@ -1859,12 +1859,16 @@ struct TimeOfDay_Struct {
 };
 
 // Darvik: shopkeeper structs
-struct Merchant_Click_Struct {
-/*000*/ uint32	npcid;			// Merchant NPC's entity id
-/*004*/ uint32	playerid;
-/*008*/ uint32	command;		//1=open, 0=cancel/close
-/*012*/ float	rate;			//cost multiplier, dosent work anymore
+struct MerchantClick_Struct
+{
+    /*000*/ uint32 npc_id;      // Merchant NPC's entity id
+    /*004*/ uint32 player_id;
+    /*008*/ uint32 command;     // 1=open, 0=cancel/close
+    /*012*/ float  rate;        // cost multiplier, dosent work anymore
+    /*016*/ int32  tab_display; // bitmask b000 none, b001 Purchase/Sell, b010 Recover, b100 Parcels
+    /*020*/ int32  unknown020;  // Seen 2592000 from Server or -1 from Client
 };
+
 /*
 Unknowns:
 0 is e7 from 01 to // MAYBE SLOT IN PURCHASE
@@ -2321,12 +2325,21 @@ struct BookText_Struct {
 // This is just a "text file" on the server
 // or in our case, the 'name' column in our books table.
 struct BookRequest_Struct {
-/*0000*/	uint32 window;		// where to display the text (0xFFFFFFFF means new window).
-/*0004*/	uint32 invslot;		// The inventory slot the book is in. Not used, but echoed in the response packet.
-/*0008*/	uint32 type;		// 0 = Scroll, 1 = Book, 2 = Item Info. Possibly others
-/*0012*/	uint32 unknown0012;
-/*0016*/	uint16 unknown0016;
-/*0018*/	char txtfile[8194];
+/*0000*/ uint32 window;     // where to display the text (0xFFFFFFFF means new window).
+/*0004*/ uint32 invslot;    // The inventory slot the book is in
+/*0008*/ uint32 type;       // 0 = Scroll, 1 = Book, 2 = Item Info. Possibly others
+/*0012*/ uint32 target_id;
+/*0016*/ uint8 can_cast;
+/*0017*/ uint8 can_scribe;
+/*0018*/ char txtfile[8194];
+};
+
+// used by Scribe and CastSpell book buttons
+struct BookButton_Struct
+{
+/*0000*/ int32 invslot;
+/*0004*/ int32 target_id; // client's target when using the book
+/*0008*/ int32 unused;    // always 0 from button packets
 };
 
 /*
@@ -2758,8 +2771,8 @@ struct GetItems_Struct{
 };
 
 struct BecomeTrader_Struct{
-	uint32 ID;
-	uint32 Code;
+	uint32 trader_id;
+	uint32 action;
 };
 
 struct Trader_ShowItems_Struct{
@@ -2769,15 +2782,15 @@ struct Trader_ShowItems_Struct{
 };
 
 struct TraderBuy_Struct {
-/*000*/ uint32   Action;
-/*004*/ uint32   Price;
-/*008*/ uint32   TraderID;
-/*012*/ char    ItemName[64];
-/*076*/ uint32   Unknown076;
-/*080*/ uint32   ItemID;
-/*084*/ uint32   AlreadySold;
-/*088*/ uint32   Quantity;
-/*092*/ uint32   Unknown092;
+/*000*/ uint32  action;
+/*004*/ uint32  price;
+/*008*/ uint32  trader_id;
+/*012*/ char    item_name[64];
+/*076*/ uint32  unknown_076;
+/*080*/ uint32  item_id;
+/*084*/ uint32  already_sold;
+/*088*/ uint32  quantity;
+/*092*/ uint32  unknown_092;
 };
 
 struct TraderItemUpdate_Struct{
@@ -2942,7 +2955,7 @@ struct Make_Pet_Struct { //Simple struct for getting pet info
 	uint32 min_dmg;
 	uint32 max_dmg;
 };
-struct Ground_Spawn{
+struct GroundSpawn{
 	float max_x;
 	float max_y;
 	float min_x;
@@ -2954,8 +2967,8 @@ struct Ground_Spawn{
 	uint32 max_allowed;
 	uint32 respawntimer;
 };
-struct Ground_Spawns {
-	struct Ground_Spawn spawn[50]; //Assigned max number to allow
+struct GroundSpawns {
+	struct GroundSpawn spawn[50]; //Assigned max number to allow
 };
 
 //struct PetitionBug_Struct{
@@ -3508,9 +3521,14 @@ struct RaidAddMember_Struct {
 /*139*/	uint8 flags[5]; //no idea if these are needed...
 };
 
+struct RaidNote_Struct {
+/*000*/ RaidGeneral_Struct general;
+/*140*/ char note[64];
+};
+
 struct RaidMOTD_Struct {
 /*000*/ RaidGeneral_Struct general; // leader_name and action only used
-/*140*/ char motd[0]; // max size 1024, but reply is variable
+/*140*/ char motd[1024]; // max size is 1024, but reply is variable
 };
 
 struct RaidLeadershipUpdate_Struct {

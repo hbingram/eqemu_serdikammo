@@ -30,7 +30,6 @@
 #include "features.h"
 #include "ipc_mutex.h"
 #include "inventory_profile.h"
-#include "loottable.h"
 #include "memory_mapped_file.h"
 #include "mysql.h"
 #include "rulesys.h"
@@ -41,8 +40,14 @@
 #include "repositories/criteria/content_filter_criteria.h"
 #include "repositories/account_repository.h"
 #include "repositories/faction_association_repository.h"
+#include "repositories/starting_items_repository.h"
 #include "path_manager.h"
 #include "repositories/loottable_repository.h"
+#include "repositories/character_item_recast_repository.h"
+#include "repositories/character_corpses_repository.h"
+#include "repositories/skill_caps_repository.h"
+#include "repositories/inventory_repository.h"
+#include "repositories/books_repository.h"
 
 namespace ItemField
 {
@@ -51,7 +56,9 @@ namespace ItemField
 #define F(x) x,
 #include "item_fieldlist.h"
 #undef F
-		updated
+		updated,
+		minstatus,
+		comment,
 	};
 }
 
@@ -295,15 +302,15 @@ bool SharedDatabase::UpdateInventorySlot(uint32 char_id, const EQ::ItemInstance*
 	// Update/Insert item
 	const std::string query = StringFormat("REPLACE INTO inventory "
 	                                       "(charid, slotid, itemid, charges, instnodrop, custom_data, color, "
-	                                       "augslot1, augslot2, augslot3, augslot4, augslot5, augslot6, ornamenticon, ornamentidfile, ornament_hero_model) "
+	                                       "augslot1, augslot2, augslot3, augslot4, augslot5, augslot6, ornamenticon, ornamentidfile, ornament_hero_model, guid) "
 	                                       "VALUES( %lu, %lu, %lu, %lu, %lu, '%s', %lu, "
-	                                       "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu)",
+	                                       "%lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu, %lu)",
 	                                       static_cast<unsigned long>(char_id), static_cast<unsigned long>(slot_id), static_cast<unsigned long>(inst->GetItem()->ID),
 	                                       static_cast<unsigned long>(charges), static_cast<unsigned long>(inst->IsAttuned() ? 1 : 0),
 	                                       inst->GetCustomDataString().c_str(), static_cast<unsigned long>(inst->GetColor()),
 	                                       static_cast<unsigned long>(augslot[0]), static_cast<unsigned long>(augslot[1]), static_cast<unsigned long>(augslot[2]),
 	                                       static_cast<unsigned long>(augslot[3]), static_cast<unsigned long>(augslot[4]), static_cast<unsigned long>(augslot[5]), static_cast<unsigned long>(inst->GetOrnamentationIcon()),
-	                                       static_cast<unsigned long>(inst->GetOrnamentationIDFile()), static_cast<unsigned long>(inst->GetOrnamentHeroModel()));
+	                                       static_cast<unsigned long>(inst->GetOrnamentationIDFile()), static_cast<unsigned long>(inst->GetOrnamentHeroModel()), inst->GetSerialNumber());
 	const auto results = QueryDatabase(query);
 
     // Save bag contents, if slot supports bag contents
@@ -444,45 +451,96 @@ bool SharedDatabase::SetSharedPlatinum(uint32 account_id, int32 amount_to_add) {
 	return true;
 }
 
-bool SharedDatabase::SetStartingItems(PlayerProfile_Struct* pp, EQ::InventoryProfile* inv, uint32 si_race, uint32 si_class, uint32 si_deity, uint32 si_current_zone, char* si_name, int admin_level) {
+bool SharedDatabase::SetStartingItems(
+	PlayerProfile_Struct *pp,
+	EQ::InventoryProfile *inv,
+	uint32 si_race,
+	uint32 si_class,
+	uint32 si_deity,
+	uint32 si_current_zone,
+	char *si_name,
+	int admin_level
+)
+{
+	const EQ::ItemData *item_data;
 
-	const EQ::ItemData *myitem;
-
-	const std::string query   = StringFormat(
-		"SELECT itemid, item_charges, slot FROM starting_items "
-		"WHERE (race = %i or race = 0) AND (class = %i or class = 0) AND "
-		"(deityid = %i or deityid = 0) AND (zoneid = %i or zoneid = 0) AND "
-		"gm <= %i %s ORDER BY id",
-		si_race,
-		si_class,
-		si_deity,
-		si_current_zone,
-		admin_level,
-		ContentFilterCriteria::apply().c_str()
+	const auto& l = StartingItemsRepository::GetWhere(
+		*this,
+		fmt::format(
+			"TRUE {}",
+			ContentFilterCriteria::apply()
+		)
 	);
 
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
+	if (l.empty()) {
 		return false;
 	}
 
+	std::vector<StartingItemsRepository::StartingItems> v;
 
-	for (auto& row = results.begin(); row != results.end(); ++row) {
-		const int32 itemid = Strings::ToInt(row[0]);
-		const int32 charges = Strings::ToInt(row[1]);
-		int32 slot = Strings::ToInt(row[2]);
-		myitem = GetItem(itemid);
+	for (const auto &e : l) {
+		const auto &classes = Strings::Split(e.class_list, "|");
+		const auto &deities = Strings::Split(e.deity_list, "|");
+		const auto &races   = Strings::Split(e.race_list, "|");
+		const auto &zones   = Strings::Split(e.zone_id_list, "|");
 
-		if(!myitem)
+		const std::string &all = std::to_string(0);
+
+		if (classes[0] != all) {
+			if (!Strings::Contains(classes, std::to_string(si_class))) {
+				continue;
+			}
+		}
+
+		if (deities[0] != all) {
+			if (!Strings::Contains(deities, std::to_string(si_deity))) {
+				continue;
+			}
+		}
+
+		if (races[0] != all) {
+			if (!Strings::Contains(races, std::to_string(si_race))) {
+				continue;
+			}
+		}
+
+		if (zones[0] != all) {
+			if (!Strings::Contains(zones, std::to_string(si_current_zone))) {
+				continue;
+			}
+		}
+
+		v.emplace_back(e);
+	}
+
+	for (const auto &e : v) {
+		const uint32 item_id      = e.item_id;
+		const uint8  item_charges = e.item_charges;
+		int32        slot         = e.inventory_slot;
+
+		item_data = GetItem(item_id);
+
+		if (!item_data) {
 			continue;
+		}
 
-		const EQ::ItemInstance* myinst = CreateBaseItem(myitem, charges);
+		const auto* inst = CreateItem(
+			item_data,
+			item_charges,
+			e.augment_one,
+			e.augment_two,
+			e.augment_three,
+			e.augment_four,
+			e.augment_five,
+			e.augment_six
+		);
 
-		if(slot < 0)
-			slot = inv->FindFreeSlot(0, 0);
+		if (slot < EQ::invslot::slotCharm) {
+			slot = inv->FindFreeSlot(false, false);
+		}
 
-		inv->PutItem(slot, *myinst);
-		safe_delete(myinst);
+		inv->PutItem(slot, *inst);
+		safe_delete(inst);
 	}
 
 	return true;
@@ -595,48 +653,67 @@ bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
 		return false;
 
 	// Retrieve character inventory
-	const std::string query =
-	    StringFormat("SELECT slotid, itemid, charges, color, augslot1, augslot2, augslot3, augslot4, augslot5, "
-			 "augslot6, instnodrop, custom_data, ornamenticon, ornamentidfile, ornament_hero_model FROM "
-			 "inventory WHERE charid = %i ORDER BY slotid",
-			 char_id);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		LogError("If you got an error related to the 'instnodrop' field, run the "
-						    "following SQL Queries:\nalter table inventory add instnodrop "
-						    "tinyint(1) unsigned default 0 not null;\n");
+	auto results = InventoryRepository::GetWhere(*this, fmt::format("`charid` = '{}' ORDER BY `slotid`;", char_id));
+	if (results.empty()) {
+		LogError("Error loading inventory for char_id {} from the database.", char_id);
 		return false;
 	}
 
+	for (auto const &row: results) {
+		if (row.guid != 0) {
+			EQ::ItemInstance::AddGUIDToMap(row.guid);
+		}
+	}
+
 	const auto timestamps = GetItemRecastTimestamps(char_id);
+	auto cv_conflict      = false;
+	const auto pmask      = inv->GetLookup()->PossessionsBitmask;
+	const auto bank_size  = inv->GetLookup()->InventoryTypeSize.Bank;
 
-	auto cv_conflict = false;
-	const auto pmask = inv->GetLookup()->PossessionsBitmask;
-	const auto bank_size = inv->GetLookup()->InventoryTypeSize.Bank;
+	std::vector<InventoryRepository::Inventory> queue{};
+	for (auto &row: results) {
+		const int16 slot_id              = row.slotid;
+		const uint32 item_id             = row.itemid;
+		const uint16 charges             = row.charges;
+		const uint32 color               = row.color;
+		const bool instnodrop            = row.instnodrop;
+		const uint32 ornament_icon       = row.ornamenticon;
+		const uint32 ornament_idfile     = row.ornamentidfile;
+		const uint32 ornament_hero_model = row.ornament_hero_model;
 
-	for (auto& row = results.begin(); row != results.end(); ++row) {
-		int16 slot_id = Strings::ToInt(row[0]);
+		uint32 aug[EQ::invaug::SOCKET_COUNT];
+		aug[0] = row.augslot1;
+		aug[1] = row.augslot2;
+		aug[2] = row.augslot3;
+		aug[3] = row.augslot4;
+		aug[4] = row.augslot5;
+		aug[5] = row.augslot6;
 
-		if (slot_id <= EQ::invslot::POSSESSIONS_END && slot_id >= EQ::invslot::POSSESSIONS_BEGIN) { // Titanium thru UF check
+		if (slot_id <= EQ::invslot::POSSESSIONS_END && slot_id >= EQ::invslot::POSSESSIONS_BEGIN) {
+			// Titanium thru UF check
 			if (((static_cast<uint64>(1) << slot_id) & pmask) == 0) {
 				cv_conflict = true;
 				continue;
 			}
 		}
-		else if (slot_id <= EQ::invbag::GENERAL_BAGS_END && slot_id >= EQ::invbag::GENERAL_BAGS_BEGIN) { // Titanium thru UF check
-			const auto parent_slot = EQ::invslot::GENERAL_BEGIN + ((slot_id - EQ::invbag::GENERAL_BAGS_BEGIN) / EQ::invbag::SLOT_COUNT);
+		else if (slot_id <= EQ::invbag::GENERAL_BAGS_END && slot_id >= EQ::invbag::GENERAL_BAGS_BEGIN) {
+			// Titanium thru UF check
+			const auto parent_slot = EQ::invslot::GENERAL_BEGIN + (
+				                         (slot_id - EQ::invbag::GENERAL_BAGS_BEGIN) / EQ::invbag::SLOT_COUNT);
 			if (((static_cast<uint64>(1) << parent_slot) & pmask) == 0) {
 				cv_conflict = true;
 				continue;
 			}
 		}
-		else if (slot_id <= EQ::invslot::BANK_END && slot_id >= EQ::invslot::BANK_BEGIN) { // Titanium check
+		else if (slot_id <= EQ::invslot::BANK_END && slot_id >= EQ::invslot::BANK_BEGIN) {
+			// Titanium check
 			if ((slot_id - EQ::invslot::BANK_BEGIN) >= bank_size) {
 				cv_conflict = true;
 				continue;
 			}
 		}
-		else if (slot_id <= EQ::invbag::BANK_BAGS_END && slot_id >= EQ::invbag::BANK_BAGS_BEGIN) { // Titanium check
+		else if (slot_id <= EQ::invbag::BANK_BAGS_END && slot_id >= EQ::invbag::BANK_BAGS_BEGIN) {
+			// Titanium check
 			const auto parent_index = ((slot_id - EQ::invbag::BANK_BAGS_BEGIN) / EQ::invbag::SLOT_COUNT);
 			if (parent_index >= bank_size) {
 				cv_conflict = true;
@@ -644,64 +721,55 @@ bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
 			}
 		}
 
-		uint32 item_id = Strings::ToUnsignedInt(row[1]);
-		const uint16 charges = Strings::ToUnsignedInt(row[2]);
-		const uint32 color = Strings::ToUnsignedInt(row[3]);
-
-		uint32 aug[EQ::invaug::SOCKET_COUNT];
-
-		aug[0] = Strings::ToUnsignedInt(row[4]);
-		aug[1] = Strings::ToUnsignedInt(row[5]);
-		aug[2] = Strings::ToUnsignedInt(row[6]);
-		aug[3] = Strings::ToUnsignedInt(row[7]);
-		aug[4] = Strings::ToUnsignedInt(row[8]);
-		aug[5] = Strings::ToUnsignedInt(row[9]);
-
-		const bool instnodrop = (row[10] && static_cast<uint16>(Strings::ToUnsignedInt(row[10])));
-
-		const uint32 ornament_icon = Strings::ToUnsignedInt(row[12]);
-		const uint32 ornament_idfile = Strings::ToUnsignedInt(row[13]);
-		uint32 ornament_hero_model = Strings::ToUnsignedInt(row[14]);
-
-		const EQ::ItemData *item = GetItem(item_id);
-
+		auto *item = GetItem(item_id);
 		if (!item) {
-			LogError("Warning: charid [{}] has an invalid item_id [{}] in inventory slot [{}]", char_id, item_id,
-				slot_id);
+			LogError(
+				"Warning: charid [{}] has an invalid item_id [{}] in inventory slot [{}]",
+				char_id,
+				item_id,
+				slot_id
+			);
 			continue;
 		}
 
-		EQ::ItemInstance *inst = CreateBaseItem(item, charges);
-
-		if (inst == nullptr)
+		auto *inst = CreateBaseItem(item, charges);
+		if (!inst) {
 			continue;
+		}
 
-		if (row[11]) {
-			std::string data_str(row[11]);
-			inst->SetCustomDataString(data_str);
+		if (!row.custom_data.empty()) {
+			inst->SetCustomDataString(row.custom_data);
 		}
 
 		inst->SetOrnamentIcon(ornament_icon);
 		inst->SetOrnamentationIDFile(ornament_idfile);
 		inst->SetOrnamentHeroModel(item->HerosForgeModel);
 
-		if (instnodrop || (inst->GetItem()->Attuneable && slot_id >= EQ::invslot::EQUIPMENT_BEGIN && slot_id <= EQ::invslot::EQUIPMENT_END))
+		if (instnodrop || (inst->GetItem()->Attuneable && slot_id >= EQ::invslot::EQUIPMENT_BEGIN && slot_id <=
+		                   EQ::invslot::EQUIPMENT_END)) {
 			inst->SetAttuned(true);
+		}
 
-		if (color > 0)
+		if (color > 0) {
 			inst->SetColor(color);
+		}
 
-		if (charges == 0x7FFF)
+		if (charges == 0x7FFF) {
 			inst->SetCharges(-1);
-		else if (charges == 0 && inst->IsStackable()) // Stackable items need a minimum charge of 1 remain moveable.
+		}
+		else if (charges == 0 && inst->IsStackable()) {
+			// Stackable items need a minimum charge of 1 remain moveable.
 			inst->SetCharges(1);
-		else
+		}
+		else {
 			inst->SetCharges(charges);
+		}
 
 		if (item->RecastDelay) {
 			if (item->RecastType != RECAST_TYPE_UNLINKED_ITEM && timestamps.count(item->RecastType)) {
 				inst->SetRecastTimestamp(timestamps.at(item->RecastType));
-			} else if (item->RecastType == RECAST_TYPE_UNLINKED_ITEM && timestamps.count(item->ID)) {
+			}
+			else if (item->RecastType == RECAST_TYPE_UNLINKED_ITEM && timestamps.count(item->ID)) {
 				inst->SetRecastTimestamp(timestamps.at(item->ID));
 			}
 			else {
@@ -711,42 +779,62 @@ bool SharedDatabase::GetInventory(uint32 char_id, EQ::InventoryProfile *inv)
 
 		if (item->IsClassCommon()) {
 			for (int i = EQ::invaug::SOCKET_BEGIN; i <= EQ::invaug::SOCKET_END; i++) {
-				if (aug[i])
+				if (aug[i]) {
 					inst->PutAugment(this, i, aug[i]);
+				}
 			}
 		}
 
 		int16 put_slot_id;
 		if (slot_id >= 8000 && slot_id <= 8999) {
 			put_slot_id = inv->PushCursor(*inst);
-		} else if (slot_id >= 3111 && slot_id <= 3179) {
+		}
+		else if (slot_id >= 3111 && slot_id <= 3179) {
 			// Admins: please report any occurrences of this error
-			LogError("Warning: Defunct location for item in inventory: charid={}, item_id={}, slot_id={} .. pushing to cursor...",
-				char_id, item_id, slot_id);
+			LogError(
+				"Warning: Defunct location for item in inventory: charid={}, item_id={}, slot_id={} .. pushing to cursor...",
+				char_id,
+				item_id,
+				slot_id
+			);
 			put_slot_id = inv->PushCursor(*inst);
-		} else {
+		}
+		else {
 			put_slot_id = inv->PutItem(slot_id, *inst);
 		}
+
+		row.guid = inst->GetSerialNumber();
+		queue.push_back(row);
 
 		safe_delete(inst);
 
 		// Save ptr to item in inventory
 		if (put_slot_id == INVALID_INDEX) {
-			LogError("Warning: Invalid slot_id for item in inventory: charid=[{}], item_id=[{}], slot_id=[{}]",
-				char_id, item_id, slot_id);
+			LogError(
+				"Warning: Invalid slot_id for item in inventory: charid=[{}], item_id=[{}], slot_id=[{}]",
+				char_id,
+				item_id,
+				slot_id
+			);
 		}
 	}
 
 	if (cv_conflict) {
-		char char_name[64] = "";
-		GetCharName(char_id, char_name);
-		LogError("ClientVersion/Expansion conflict during inventory load at zone entry for [{}] (charid: [{}], inver: [{}], gmi: [{}])",
+		const std::string &char_name = GetCharName(char_id);
+		LogError(
+			"ClientVersion/Expansion conflict during inventory load at zone entry for [{}] (charid: [{}], inver: [{}], gmi: [{}])",
 			char_name,
 			char_id,
 			EQ::versions::MobVersionName(inv->InventoryVersion()),
 			(inv->GMInventory() ? "true" : "false")
 		);
 	}
+
+	if (!queue.empty()) {
+		InventoryRepository::ReplaceMany(*this, queue);
+	}
+
+	EQ::ItemInstance::ClearGUIDMap();
 
 	// Retrieve shared inventory
 	return GetSharedBank(char_id, inv, true);
@@ -843,34 +931,49 @@ bool SharedDatabase::GetInventory(uint32 account_id, char *name, EQ::InventoryPr
 std::map<uint32, uint32> SharedDatabase::GetItemRecastTimestamps(uint32 char_id)
 {
 	std::map<uint32, uint32> timers;
-	const std::string query = StringFormat("SELECT recast_type,timestamp FROM character_item_recast WHERE id=%u", char_id);
-	auto results = QueryDatabase(query);
-	if (!results.Success() || results.RowCount() == 0)
-		return timers;
 
-	for (auto& row = results.begin(); row != results.end(); ++row)
-		timers[Strings::ToUnsignedInt(row[0])] = Strings::ToUnsignedInt(row[1]);
-	return timers; // RVO or move assigned
+	const auto& l = CharacterItemRecastRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`id` = {}",
+			char_id
+		)
+	);
+
+	if (l.empty()) {
+		return timers;
+	}
+
+	for (const auto& e : l) {
+		timers[e.recast_type] = e.timestamp;
+	}
+
+	return timers;
 }
 
 uint32 SharedDatabase::GetItemRecastTimestamp(uint32 char_id, uint32 recast_type)
 {
-	const std::string query = StringFormat("SELECT timestamp FROM character_item_recast WHERE id=%u AND recast_type=%u",
-	                                       char_id, recast_type);
-	auto results = QueryDatabase(query);
-	if (!results.Success() || results.RowCount() == 0)
-		return 0;
+	const auto& l = CharacterItemRecastRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`id` = {} AND `recast_type` = {}",
+			char_id,
+			recast_type
+		)
+	);
 
-	auto& row = results.begin();
-	return Strings::ToUnsignedInt(row[0]);
+	return l.empty() ? 0 : l[0].timestamp;
 }
 
 void SharedDatabase::ClearOldRecastTimestamps(uint32 char_id)
 {
-	// This actually isn't strictly live-like. Live your recast timestamps are forever
-	const std::string query =
-	    StringFormat("DELETE FROM character_item_recast WHERE id = %u and timestamp < UNIX_TIMESTAMP()", char_id);
-	QueryDatabase(query);
+	CharacterItemRecastRepository::DeleteWhere(
+		*this,
+		fmt::format(
+			"`id` = {} AND `timestamp` < UNIX_TIMESTAMP()",
+			char_id
+		)
+	);
 }
 
 void SharedDatabase::GetItemsCount(int32 &item_count, uint32 &max_id)
@@ -965,7 +1068,7 @@ void SharedDatabase::LoadItems(void *data, uint32 size, int32 items, uint32 max_
 #define F(x) "`"#x"`,"
 #include "item_fieldlist.h"
 #undef F
-		"updated FROM items ORDER BY id";
+		"updated, minstatus, comment FROM items ORDER BY id";
 	auto results = QueryDatabase(query);
 	if (!results.Success()) {
 		return;
@@ -977,9 +1080,13 @@ void SharedDatabase::LoadItems(void *data, uint32 size, int32 items, uint32 max_
 		// Unique Identifier
 		item.ID = Strings::ToUnsignedInt(row[ItemField::id]);
 
-		// Name and Lore
+		// Minimum Status
+		item.MinStatus = static_cast<uint8>(Strings::ToUnsignedInt(row[ItemField::minstatus]));
+
+		// Name, Lore, and Comment
 		strn0cpy(item.Name, row[ItemField::name], sizeof(item.Name));
 		strn0cpy(item.Lore, row[ItemField::lore], sizeof(item.Lore));
+		strn0cpy(item.Comment, row[ItemField::comment], sizeof(item.Comment));
 
 		// Flags
 		item.ArtifactFlag = Strings::ToBool(row[ItemField::artifactflag]);
@@ -1285,210 +1392,28 @@ const EQ::ItemData* SharedDatabase::IterateItems(uint32* id) const
 	return nullptr;
 }
 
-std::string SharedDatabase::GetBook(const char *txtfile, int16 *language)
+Book_Struct SharedDatabase::GetBook(const std::string& text_file)
 {
-	char txtfile2[20];
-	std::string txtout;
-	strcpy(txtfile2, txtfile);
+	const auto& l = BooksRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`name` = '{}'",
+			Strings::Escape(text_file)
+		)
+	);
 
-	const std::string query = StringFormat("SELECT txtfile, language FROM books WHERE name = '%s'", txtfile2);
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		txtout.assign(" ",1);
-		return txtout;
+	Book_Struct b;
+
+	if (l.empty()) {
+		return b;
 	}
 
-    if (results.RowCount() == 0) {
-        LogError("No book to send, ({})", txtfile);
-        txtout.assign(" ",1);
-        return txtout;
-    }
+	const auto& e = l.front();
 
-    auto& row = results.begin();
-    txtout.assign(row[0],strlen(row[0]));
-    *language = static_cast<int16>(Strings::ToInt(row[1]));
+	b.language = e.language;
+	b.text     = e.txtfile;
 
-    return txtout;
-}
-
-void SharedDatabase::GetFactionListInfo(uint32 &list_count, uint32 &max_lists) {
-	list_count = 0;
-	max_lists = 0;
-
-	const std::string query = "SELECT COUNT(*), MAX(id) FROM npc_faction";
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-        return;
-	}
-
-	if (results.RowCount() == 0)
-        return;
-
-    auto& row = results.begin();
-
-    list_count = Strings::ToUnsignedInt(row[0]);
-    max_lists = Strings::ToUnsignedInt(row[1] ? row[1] : "0");
-}
-
-const NPCFactionList* SharedDatabase::GetNPCFactionEntry(uint32 id) const
-{
-	if(!faction_hash) {
-		return nullptr;
-	}
-
-	if(faction_hash->exists(id)) {
-		return &(faction_hash->at(id));
-	}
-
-	return nullptr;
-}
-
-void SharedDatabase::LoadNPCFactionLists(void *data, uint32 size, uint32 list_count, uint32 max_lists) {
-	EQ::FixedMemoryHashSet<NPCFactionList> hash(static_cast<uint8*>(data), size, list_count, max_lists);
-	NPCFactionList faction;
-
-	const std::string query = "SELECT npc_faction.id, npc_faction.primaryfaction, npc_faction.ignore_primary_assist, "
-                            "npc_faction_entries.faction_id, npc_faction_entries.value, npc_faction_entries.npc_value, "
-                            "npc_faction_entries.temp FROM npc_faction LEFT JOIN npc_faction_entries "
-                            "ON npc_faction.id = npc_faction_entries.npc_faction_id ORDER BY npc_faction.id;";
-    auto results = QueryDatabase(query);
-    if (!results.Success()) {
-		return;
-    }
-
-    uint32 current_id = 0;
-    uint32 current_entry = 0;
-
-    for(auto& row = results.begin(); row != results.end(); ++row) {
-	    const uint32 id = Strings::ToUnsignedInt(row[0]);
-        if(id != current_id) {
-            if(current_id != 0) {
-                hash.insert(current_id, faction);
-            }
-
-            memset(&faction, 0, sizeof(faction));
-            current_entry = 0;
-            current_id = id;
-            faction.id = id;
-            faction.primaryfaction = Strings::ToUnsignedInt(row[1]);
-            faction.assistprimaryfaction = (Strings::ToInt(row[2]) == 0);
-        }
-
-        if(!row[3])
-            continue;
-
-        if(current_entry >= MAX_NPC_FACTIONS)
-				continue;
-
-        faction.factionid[current_entry] = Strings::ToUnsignedInt(row[3]);
-        faction.factionvalue[current_entry] = Strings::ToInt(row[4]);
-        faction.factionnpcvalue[current_entry] = static_cast<int8>(Strings::ToInt(row[5]));
-        faction.factiontemp[current_entry] = static_cast<uint8>(Strings::ToUnsignedInt(row[6]));
-        ++current_entry;
-    }
-
-    if(current_id != 0)
-        hash.insert(current_id, faction);
-
-}
-
-bool SharedDatabase::LoadNPCFactionLists(const std::string &prefix) {
-	faction_mmf.reset(nullptr);
-	faction_hash.reset(nullptr);
-
-	try {
-		const auto Config = EQEmuConfig::get();
-		EQ::IPCMutex mutex("faction");
-		mutex.Lock();
-		std::string file_name = fmt::format("{}/{}{}", path.GetSharedMemoryPath(), prefix, std::string("faction"));
-		LogInfo("Loading [{}]", file_name);
-		faction_mmf = std::make_unique<EQ::MemoryMappedFile>(file_name);
-		faction_hash = std::make_unique<EQ::FixedMemoryHashSet<NPCFactionList>>(static_cast<uint8*>(faction_mmf->Get()), faction_mmf->Size());
-		mutex.Unlock();
-
-		LogInfo("Loaded faction lists via shared memory");
-	} catch(std::exception& ex) {
-		LogError("Error Loading npc factions: {}", ex.what());
-		return false;
-	}
-
-	return true;
-}
-
-void SharedDatabase::GetFactionAssociationInfo(uint32 &list_count, uint32 &max_lists)
-{
-	list_count = static_cast<uint32>(FactionAssociationRepository::Count(*this));
-	max_lists = static_cast<uint32>(FactionAssociationRepository::GetMaxId(*this));
-}
-
-const FactionAssociations *SharedDatabase::GetFactionAssociationHit(int id)
-{
-	if (!faction_associations_hash) {
-		return nullptr;
-	}
-
-	if (faction_associations_hash->exists(id)) {
-		return &(faction_associations_hash->at(id));
-	}
-
-	return nullptr;
-}
-
-void SharedDatabase::LoadFactionAssociation(void *data, uint32 size, uint32 list_count, uint32 max_lists)
-{
-	EQ::FixedMemoryHashSet<FactionAssociations> hash(reinterpret_cast<uint8 *>(data), size, list_count, max_lists);
-	FactionAssociations faction{};
-
-	auto results = FactionAssociationRepository::All(*this);
-	for (auto &row : results) {
-		faction.hits[0].id = row.id_1;
-		faction.hits[0].multiplier = row.mod_1;
-		faction.hits[1].id = row.id_2;
-		faction.hits[1].multiplier = row.mod_2;
-		faction.hits[2].id = row.id_3;
-		faction.hits[2].multiplier = row.mod_3;
-		faction.hits[3].id = row.id_4;
-		faction.hits[3].multiplier = row.mod_4;
-		faction.hits[4].id = row.id_5;
-		faction.hits[4].multiplier = row.mod_5;
-		faction.hits[5].id = row.id_6;
-		faction.hits[5].multiplier = row.mod_6;
-		faction.hits[6].id = row.id_7;
-		faction.hits[6].multiplier = row.mod_7;
-		faction.hits[7].id = row.id_8;
-		faction.hits[7].multiplier = row.mod_8;
-		faction.hits[8].id = row.id_9;
-		faction.hits[8].multiplier = row.mod_9;
-		faction.hits[9].id = row.id_10;
-		faction.hits[9].multiplier = row.mod_10;
-
-		hash.insert(row.id, faction);
-	}
-}
-
-bool SharedDatabase::LoadFactionAssociation(const std::string &prefix)
-{
-	faction_associations_mmf.reset(nullptr);
-	faction_associations_hash.reset(nullptr);
-
-	try {
-		auto Config = EQEmuConfig::get();
-		EQ::IPCMutex mutex("factionassociations");
-		mutex.Lock();
-		std::string file_name = fmt::format("{}/{}{}", path.GetSharedMemoryPath(), prefix, std::string("factionassociations"));
-		faction_associations_mmf = std::unique_ptr<EQ::MemoryMappedFile>(new EQ::MemoryMappedFile(file_name));
-		faction_associations_hash = std::unique_ptr<EQ::FixedMemoryHashSet<FactionAssociations>>(
-		    new EQ::FixedMemoryHashSet<FactionAssociations>(reinterpret_cast<uint8 *>(faction_associations_mmf->Get()),
-								  faction_associations_mmf->Size()));
-		mutex.Unlock();
-
-		LogInfo("Loaded faction associations via shared memory");
-	} catch (std::exception &ex) {
-		LogError("Error Loading faction associations: {}", ex.what());
-		return false;
-	}
-
-	return true;
+	return b;
 }
 
 // Create appropriate EQ::ItemInstance class
@@ -1608,27 +1533,18 @@ EQ::ItemInstance* SharedDatabase::CreateBaseItem(const EQ::ItemData* item, int16
 	return inst;
 }
 
-int32 SharedDatabase::DeleteStalePlayerCorpses() {
-	if(RuleB(Zone, EnableShadowrest)) {
-		const std::string query = StringFormat(
-			"UPDATE `character_corpses` SET `is_buried` = 1 WHERE `is_buried` = 0 AND "
-            "(UNIX_TIMESTAMP() - UNIX_TIMESTAMP(time_of_death)) > %d AND NOT time_of_death = 0",
-             (RuleI(Character, CorpseDecayTimeMS) / 1000));
-		const auto results = QueryDatabase(query);
-		if (!results.Success())
-			return -1;
-
-		return results.RowsAffected();
-	}
-
-	const std::string query = StringFormat(
-		"DELETE FROM `character_corpses` WHERE (UNIX_TIMESTAMP() - UNIX_TIMESTAMP(time_of_death)) > %d "
-		"AND NOT time_of_death = 0", (RuleI(Character, CorpseDecayTimeMS) / 1000));
-	const auto results = QueryDatabase(query);
-    if (!results.Success())
-        return -1;
-
-    return results.RowsAffected();
+int SharedDatabase::DeleteStalePlayerCorpses() {
+	return (
+		RuleB(Zone, EnableShadowrest) ?
+		CharacterCorpsesRepository::BuryDecayedCorpses(*this) :
+		CharacterCorpsesRepository::DeleteWhere(
+			*this,
+			fmt::format(
+				"(UNIX_TIMESTAMP() - UNIX_TIMESTAMP(time_of_death)) > {} AND time_of_death != 0",
+				RuleI(Character, CorpseDecayTime) / 1000
+			)
+		)
+	);
 }
 
 bool SharedDatabase::GetCommandSettings(std::map<std::string, std::pair<uint8, std::vector<std::string>>> &command_settings)
@@ -1739,136 +1655,6 @@ bool SharedDatabase::GetCommandSubSettings(std::vector<CommandSubsettingsReposit
 	}
 
 	return true;
-}
-
-
-bool SharedDatabase::LoadSkillCaps(const std::string &prefix) {
-	skill_caps_mmf.reset(nullptr);
-
-	try {
-		const auto Config = EQEmuConfig::get();
-		EQ::IPCMutex mutex("skill_caps");
-		mutex.Lock();
-		std::string file_name = fmt::format("{}/{}{}", path.GetSharedMemoryPath(), prefix, std::string("skill_caps"));
-		LogInfo("Loading [{}]", file_name);
-		skill_caps_mmf = std::make_unique<EQ::MemoryMappedFile>(file_name);
-
-		LogInfo("Loaded skill caps via shared memory");
-
-		mutex.Unlock();
-	} catch(std::exception &ex) {
-		LogError("Error loading skill caps: {}", ex.what());
-		return false;
-	}
-
-	return true;
-}
-
-void SharedDatabase::LoadSkillCaps(void *data) {
-	const uint32 class_count = PLAYER_CLASS_COUNT;
-	const uint32 skill_count = EQ::skills::HIGHEST_SKILL + 1;
-	const uint32 level_count = HARD_LEVEL_CAP + 1;
-	uint16 *skill_caps_table = static_cast<uint16*>(data);
-
-	const std::string query = "SELECT skillID, class, level, cap FROM skill_caps ORDER BY skillID, class, level";
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-        LogError("Error loading skill caps from database: {}", results.ErrorMessage().c_str());
-        return;
-	}
-
-    for(auto& row = results.begin(); row != results.end(); ++row) {
-	    const uint8 skillID = Strings::ToUnsignedInt(row[0]);
-	    const uint8 class_ = Strings::ToUnsignedInt(row[1]) - 1;
-	    const uint8 level = Strings::ToUnsignedInt(row[2]);
-	    const uint16 cap = Strings::ToUnsignedInt(row[3]);
-
-        if(skillID >= skill_count || class_ >= class_count || level >= level_count)
-            continue;
-
-	    const uint32 index = (((class_ * skill_count) + skillID) * level_count) + level;
-        skill_caps_table[index] = cap;
-    }
-}
-
-uint16 SharedDatabase::GetSkillCap(uint8 Class_, EQ::skills::SkillType Skill, uint8 Level) const
-{
-	if(!skill_caps_mmf) {
-		return 0;
-	}
-
-	if(Class_ == 0)
-		return 0;
-
-	int SkillMaxLevel = RuleI(Character, SkillCapMaxLevel);
-	if(SkillMaxLevel < 1) {
-		SkillMaxLevel = RuleI(Character, MaxLevel);
-	}
-
-	const uint32 class_count = PLAYER_CLASS_COUNT;
-	const uint32 skill_count = EQ::skills::HIGHEST_SKILL + 1;
-	const uint32 level_count = HARD_LEVEL_CAP + 1;
-	if(Class_ > class_count || static_cast<uint32>(Skill) > skill_count || Level > level_count) {
-		return 0;
-	}
-
-	if(Level > static_cast<uint8>(SkillMaxLevel)){
-		Level = static_cast<uint8>(SkillMaxLevel);
-	}
-
-	const uint32 index = ((((Class_ - 1) * skill_count) + Skill) * level_count) + Level;
-	const uint16 *skill_caps_table = static_cast<uint16*>(skill_caps_mmf->Get());
-	return skill_caps_table[index];
-}
-
-uint8 SharedDatabase::GetTrainLevel(uint8 Class_, EQ::skills::SkillType Skill, uint8 Level) const
-{
-	if(!skill_caps_mmf) {
-		return 0;
-	}
-
-	if(Class_ == 0)
-		return 0;
-
-	int SkillMaxLevel = RuleI(Character, SkillCapMaxLevel);
-	if (SkillMaxLevel < 1) {
-		SkillMaxLevel = RuleI(Character, MaxLevel);
-	}
-
-	const uint32 class_count = PLAYER_CLASS_COUNT;
-	const uint32 skill_count = EQ::skills::HIGHEST_SKILL + 1;
-	const uint32 level_count = HARD_LEVEL_CAP + 1;
-	if(Class_ > class_count || static_cast<uint32>(Skill) > skill_count || Level > level_count) {
-		return 0;
-	}
-
-	uint8 ret = 0;
-	if(Level > static_cast<uint8>(SkillMaxLevel)) {
-		const uint32 index = ((((Class_ - 1) * skill_count) + Skill) * level_count);
-		const uint16 *skill_caps_table = static_cast<uint16*>(skill_caps_mmf->Get());
-		for(uint8 x = 0; x < Level; x++){
-			if(skill_caps_table[index + x]){
-				ret = x;
-				break;
-			}
-		}
-	}
-	else
-	{
-		const uint32 index = ((((Class_ - 1) * skill_count) + Skill) * level_count);
-		const uint16 *skill_caps_table = static_cast<uint16*>(skill_caps_mmf->Get());
-		for(int x = 0; x < SkillMaxLevel; x++){
-			if(skill_caps_table[index + x]){
-				ret = x;
-				break;
-			}
-		}
-	}
-
-	if(ret > GetSkillCap(Class_, Skill, Level))
-		ret = static_cast<uint8>(GetSkillCap(Class_, Skill, Level));
-
-	return ret;
 }
 
 void SharedDatabase::LoadDamageShieldTypes(SPDat_Spell_Struct* sp, int32 iMaxSpellID) {
@@ -2018,7 +1804,7 @@ void SharedDatabase::LoadSpells(void *data, int max_spells) {
 		sp[tempid].environment_type=Strings::ToInt(row[102]);
 		sp[tempid].time_of_day=Strings::ToInt(row[103]);
 
-		for(y=0; y < PLAYER_CLASS_COUNT;y++)
+		for(y=0; y < Class::PLAYER_CLASS_COUNT;y++)
 			sp[tempid].classes[y]=Strings::ToInt(row[104+y]);
 
 		sp[tempid].casting_animation=Strings::ToInt(row[120]);
@@ -2099,408 +1885,9 @@ void SharedDatabase::LoadSpells(void *data, int max_spells) {
 		sp[tempid].min_range = Strings::ToFloat(row[231]);
 		sp[tempid].no_remove = Strings::ToBool(row[232]);
 		sp[tempid].damage_shield_type = 0;
-    }
-
-    LoadDamageShieldTypes(sp, max_spells);
-}
-
-int SharedDatabase::GetMaxBaseDataLevel() {
-	const std::string query = "SELECT MAX(level) FROM base_data";
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-		return -1;
 	}
 
-	if (results.RowCount() == 0)
-        return -1;
-
-    auto& row = results.begin();
-
-	return Strings::ToInt(row[0]);
-}
-
-bool SharedDatabase::LoadBaseData(const std::string &prefix) {
-	base_data_mmf.reset(nullptr);
-
-	try {
-		const auto Config = EQEmuConfig::get();
-		EQ::IPCMutex mutex("base_data");
-		mutex.Lock();
-
-		std::string file_name = fmt::format("{}/{}{}", path.GetSharedMemoryPath(), prefix, std::string("base_data"));
-		base_data_mmf = std::make_unique<EQ::MemoryMappedFile>(file_name);
-		mutex.Unlock();
-
-		LogInfo("Loaded base data via shared memory");
-	} catch(std::exception& ex) {
-		LogError("Error Loading Base Data: {}", ex.what());
-		return false;
-	}
-
-	return true;
-}
-
-void SharedDatabase::LoadBaseData(void *data, int max_level) {
-	char *base_ptr = static_cast<char*>(data);
-
-	const std::string query = "SELECT * FROM base_data ORDER BY level, class ASC";
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
-        return;
-	}
-
-	for (auto& row = results.begin(); row != results.end(); ++row) {
-		const int lvl = Strings::ToInt(row[0]);
-		const int cl = Strings::ToInt(row[1]);
-
-        if(lvl <= 0) {
-            LogError("Non fatal error: base_data.level <= 0, ignoring.");
-            continue;
-        }
-
-        if(lvl >= max_level) {
-            LogError("Non fatal error: base_data.level >= max_level, ignoring.");
-            continue;
-        }
-
-        if(cl <= 0) {
-            LogError("Non fatal error: base_data.cl <= 0, ignoring.");
-            continue;
-        }
-
-        if(cl > 16) {
-            LogError("Non fatal error: base_data.class > 16, ignoring.");
-            continue;
-        }
-
-        BaseDataStruct *bd = reinterpret_cast<BaseDataStruct*>(base_ptr + (((16 * (lvl - 1)) + (cl - 1)) * sizeof(BaseDataStruct)));
-		bd->base_hp = Strings::ToFloat(row[2]);
-		bd->base_mana = Strings::ToFloat(row[3]);
-		bd->base_end = Strings::ToFloat(row[4]);
-		bd->hp_regen = Strings::ToFloat(row[5]);
-		bd->end_regen = Strings::ToFloat(row[6]);
-		bd->hp_factor = Strings::ToFloat(row[7]);
-		bd->mana_factor = Strings::ToFloat(row[8]);
-		bd->endurance_factor = Strings::ToFloat(row[9]);
-    }
-}
-
-const BaseDataStruct* SharedDatabase::GetBaseData(int lvl, int cl) const
-{
-	if(!base_data_mmf) {
-		return nullptr;
-	}
-
-	if(lvl <= 0) {
-		return nullptr;
-	}
-
-	if(cl <= 0) {
-		return nullptr;
-	}
-
-	if(cl > 16) {
-		return nullptr;
-	}
-
-	char *base_ptr = static_cast<char*>(base_data_mmf->Get());
-
-	const uint32 offset = ((16 * (lvl - 1)) + (cl - 1)) * sizeof(BaseDataStruct);
-
-	if(offset >= base_data_mmf->Size()) {
-		return nullptr;
-	}
-
-	const BaseDataStruct *bd = reinterpret_cast<BaseDataStruct*>(base_ptr + offset);
-	return bd;
-}
-
-void SharedDatabase::GetLootTableInfo(uint32 &loot_table_count, uint32 &max_loot_table, uint32 &loot_table_entries) {
-	loot_table_count = 0;
-	max_loot_table = 0;
-	loot_table_entries = 0;
-	const std::string query =
-		fmt::format(
-			"SELECT COUNT(*), MAX(id), (SELECT COUNT(*) FROM loottable_entries) FROM loottable WHERE TRUE {}",
-			ContentFilterCriteria::apply()
-		);
-    auto results = QueryDatabase(query);
-    if (!results.Success()) {
-        return;
-    }
-
-	if (results.RowCount() == 0)
-        return;
-
-	auto& row = results.begin();
-
-    loot_table_count = Strings::ToUnsignedInt(row[0]);
-	max_loot_table = Strings::ToUnsignedInt(row[1] ? row[1] : "0");
-	loot_table_entries = Strings::ToUnsignedInt(row[2]);
-}
-
-void SharedDatabase::GetLootDropInfo(uint32 &loot_drop_count, uint32 &max_loot_drop, uint32 &loot_drop_entries) {
-	loot_drop_count = 0;
-	max_loot_drop = 0;
-	loot_drop_entries = 0;
-
-	const std::string query = fmt::format(
-		"SELECT COUNT(*), MAX(id), (SELECT COUNT(*) FROM lootdrop_entries) FROM lootdrop WHERE TRUE {}",
-		ContentFilterCriteria::apply()
-	);
-
-    auto results = QueryDatabase(query);
-    if (!results.Success()) {
-        return;
-    }
-
-	if (results.RowCount() == 0)
-        return;
-
-    auto& row =results.begin();
-
-	loot_drop_count = Strings::ToUnsignedInt(row[0]);
-	max_loot_drop = Strings::ToUnsignedInt(row[1] ? row[1] : "0");
-	loot_drop_entries = Strings::ToUnsignedInt(row[2]);
-}
-
-void SharedDatabase::LoadLootTables(void *data, uint32 size) {
-	EQ::FixedMemoryVariableHashSet<LootTable_Struct> hash(static_cast<uint8*>(data), size);
-
-	uint8 loot_table[sizeof(LootTable_Struct) + (sizeof(LootTableEntries_Struct) * 128)];
-	LootTable_Struct *lt = reinterpret_cast<LootTable_Struct*>(loot_table);
-
-	const std::string query = fmt::format(
-		SQL(
-			SELECT
-			  loottable.id,
-			  loottable.mincash,
-			  loottable.maxcash,
-			  loottable.avgcoin,
-			  loottable_entries.lootdrop_id,
-			  loottable_entries.multiplier,
-			  loottable_entries.droplimit,
-			  loottable_entries.mindrop,
-			  loottable_entries.probability,
-			  loottable.min_expansion,
-			  loottable.max_expansion,
-			  loottable.content_flags,
-			  loottable.content_flags_disabled
-			FROM
-			  loottable
-			  LEFT JOIN loottable_entries ON loottable.id = loottable_entries.loottable_id
-			WHERE TRUE {}
-			ORDER BY
-			  id
-			),
-			ContentFilterCriteria::apply()
-		);
-
-    auto results = QueryDatabase(query);
-    if (!results.Success()) {
-        return;
-    }
-
-	uint32 current_id    = 0;
-	uint32 current_entry = 0;
-
-	for (auto& row = results.begin(); row != results.end(); ++row) {
-		const uint32 id = Strings::ToUnsignedInt(row[0]);
-		if (id != current_id) {
-			if (current_id != 0) {
-				hash.insert(
-					current_id,
-					loot_table,
-					(sizeof(LootTable_Struct) + (sizeof(LootTableEntries_Struct) * lt->NumEntries)));
-			}
-
-			memset(loot_table, 0, sizeof(LootTable_Struct) + (sizeof(LootTableEntries_Struct) * 128));
-			current_entry = 0;
-			current_id    = id;
-			lt->mincash = Strings::ToUnsignedInt(row[1]);
-			lt->maxcash = Strings::ToUnsignedInt(row[2]);
-			lt->avgcoin = Strings::ToUnsignedInt(row[3]);
-
-			lt->content_flags.min_expansion = static_cast<int16>(Strings::ToInt(row[9]));
-			lt->content_flags.max_expansion = static_cast<int16>(Strings::ToInt(row[10]));
-
-			strn0cpy(lt->content_flags.content_flags,          row[11], sizeof(lt->content_flags.content_flags));
-			strn0cpy(lt->content_flags.content_flags_disabled, row[12],  sizeof(lt->content_flags.content_flags_disabled));
-		}
-
-		if (current_entry > 128) {
-			continue;
-		}
-
-		if (!row[4]) {
-			continue;
-		}
-
-		lt->Entries[current_entry].lootdrop_id = Strings::ToUnsignedInt(row[4]);
-		lt->Entries[current_entry].multiplier  = static_cast<uint8>(Strings::ToUnsignedInt(row[5]));
-		lt->Entries[current_entry].droplimit   = static_cast<uint8>(Strings::ToUnsignedInt(row[6]));
-		lt->Entries[current_entry].mindrop     = static_cast<uint8>(Strings::ToUnsignedInt(row[7]));
-		lt->Entries[current_entry].probability = Strings::ToFloat(row[8]);
-
-		++(lt->NumEntries);
-		++current_entry;
-	}
-
-	if (current_id != 0) {
-		hash.insert(
-			current_id,
-			loot_table,
-			(sizeof(LootTable_Struct) + (sizeof(LootTableEntries_Struct) * lt->NumEntries))
-		);
-	}
-
-}
-
-void SharedDatabase::LoadLootDrops(void *data, uint32 size) {
-
-	EQ::FixedMemoryVariableHashSet<LootDrop_Struct> hash(static_cast<uint8*>(data), size);
-	uint8 loot_drop[sizeof(LootDrop_Struct) + (sizeof(LootDropEntries_Struct) * 1260)];
-	LootDrop_Struct *p_loot_drop_struct = reinterpret_cast<LootDrop_Struct*>(loot_drop);
-
-	const std::string query = fmt::format(
-		SQL(
-			SELECT
-			  lootdrop.id,
-			  lootdrop_entries.item_id,
-			  lootdrop_entries.item_charges,
-			  lootdrop_entries.equip_item,
-			  lootdrop_entries.chance,
-			  lootdrop_entries.trivial_min_level,
-			  lootdrop_entries.trivial_max_level,
-			  lootdrop_entries.npc_min_level,
-			  lootdrop_entries.npc_max_level,
-			  lootdrop_entries.multiplier,
-			  lootdrop.min_expansion,
-			  lootdrop.max_expansion,
-			  lootdrop.content_flags,
-			  lootdrop.content_flags_disabled
-			FROM
-			  lootdrop
-			  JOIN lootdrop_entries ON lootdrop.id = lootdrop_entries.lootdrop_id
-			WHERE
-			  TRUE {}
-			ORDER BY
-			  lootdrop_id
-		),
-		ContentFilterCriteria::apply()
-	);
-
-    auto results = QueryDatabase(query);
-    if (!results.Success()) {
-		return;
-    }
-
-	uint32 current_id    = 0;
-	uint32 current_entry = 0;
-
-	for (auto& row = results.begin(); row != results.end(); ++row) {
-		const auto id = Strings::ToUnsignedInt(row[0]);
-		if (id != current_id) {
-			if (current_id != 0) {
-				hash.insert(
-					current_id,
-					loot_drop,
-					(sizeof(LootDrop_Struct) + (sizeof(LootDropEntries_Struct) * p_loot_drop_struct->NumEntries)));
-			}
-
-			memset(loot_drop, 0, sizeof(LootDrop_Struct) + (sizeof(LootDropEntries_Struct) * 1260));
-			current_entry = 0;
-			current_id    = id;
-
-			p_loot_drop_struct->content_flags.min_expansion = static_cast<int16>(Strings::ToInt(row[10]));
-			p_loot_drop_struct->content_flags.max_expansion = static_cast<int16>(Strings::ToUnsignedInt(row[11]));
-
-			strn0cpy(p_loot_drop_struct->content_flags.content_flags,          row[12], sizeof(p_loot_drop_struct->content_flags.content_flags));
-			strn0cpy(p_loot_drop_struct->content_flags.content_flags_disabled, row[13], sizeof(p_loot_drop_struct->content_flags.content_flags_disabled));
-		}
-
-		if (current_entry >= 1260) {
-			continue;
-		}
-
-		p_loot_drop_struct->Entries[current_entry].item_id           = Strings::ToUnsignedInt(row[1]);
-		p_loot_drop_struct->Entries[current_entry].item_charges      = static_cast<int8>(Strings::ToUnsignedInt(row[2]));
-		p_loot_drop_struct->Entries[current_entry].equip_item        = static_cast<uint8>(Strings::ToUnsignedInt(row[3]));
-		p_loot_drop_struct->Entries[current_entry].chance            = Strings::ToFloat(row[4]);
-		p_loot_drop_struct->Entries[current_entry].trivial_min_level = static_cast<uint16>(Strings::ToUnsignedInt(row[5]));
-		p_loot_drop_struct->Entries[current_entry].trivial_max_level = static_cast<uint16>(Strings::ToUnsignedInt(row[6]));
-		p_loot_drop_struct->Entries[current_entry].npc_min_level     = static_cast<uint16>(Strings::ToUnsignedInt(row[7]));
-		p_loot_drop_struct->Entries[current_entry].npc_max_level     = static_cast<uint16>(Strings::ToUnsignedInt(row[8]));
-		p_loot_drop_struct->Entries[current_entry].multiplier        = static_cast<uint8>(Strings::ToUnsignedInt(row[9]));
-
-		++(p_loot_drop_struct->NumEntries);
-		++current_entry;
-	}
-
-	if(current_id != 0)
-        hash.insert(current_id, loot_drop, (sizeof(LootDrop_Struct) + (sizeof(LootDropEntries_Struct) * p_loot_drop_struct->NumEntries)));
-
-}
-
-bool SharedDatabase::LoadLoot(const std::string &prefix) {
-	loot_table_mmf.reset(nullptr);
-	loot_drop_mmf.reset(nullptr);
-
-	try {
-		const auto Config = EQEmuConfig::get();
-		EQ::IPCMutex mutex("loot");
-		mutex.Lock();
-		std::string file_name_lt = fmt::format("{}/{}{}", path.GetSharedMemoryPath(), prefix, std::string("loot_table"));
-
-		loot_table_mmf = std::make_unique<EQ::MemoryMappedFile>(file_name_lt);
-		loot_table_hash = std::make_unique<EQ::FixedMemoryVariableHashSet<LootTable_Struct>>(
-			static_cast<uint8*>(loot_table_mmf->Get()),
-			loot_table_mmf->Size());
-
-		LogInfo("Loaded loot tables via shared memory");
-
-		std::string file_name_ld = fmt::format("{}/{}{}", path.GetSharedMemoryPath(), prefix, std::string("loot_drop"));
-		loot_drop_mmf = std::make_unique<EQ::MemoryMappedFile>(file_name_ld);
-		loot_drop_hash = std::make_unique<EQ::FixedMemoryVariableHashSet<LootDrop_Struct>>(
-			static_cast<uint8*>(loot_drop_mmf->Get()),
-			loot_drop_mmf->Size());
-		mutex.Unlock();
-	} catch(std::exception &ex) {
-		LogError("Error loading loot: {}", ex.what());
-		return false;
-	}
-
-	return true;
-}
-
-const LootTable_Struct* SharedDatabase::GetLootTable(uint32 loottable_id) const
-{
-	if(!loot_table_hash)
-		return nullptr;
-
-	try {
-		if(loot_table_hash->exists(loottable_id)) {
-			return &loot_table_hash->at(loottable_id);
-		}
-	} catch(std::exception &ex) {
-		LogError("Could not get loot table: {}", ex.what());
-	}
-	return nullptr;
-}
-
-const LootDrop_Struct* SharedDatabase::GetLootDrop(uint32 lootdrop_id) const
-{
-	if(!loot_drop_hash)
-		return nullptr;
-
-	try {
-		if(loot_drop_hash->exists(lootdrop_id)) {
-			return &loot_drop_hash->at(lootdrop_id);
-		}
-	} catch(std::exception &ex) {
-		LogError("Could not get loot drop: {}", ex.what());
-	}
-	return nullptr;
+	LoadDamageShieldTypes(sp, max_spells);
 }
 
 void SharedDatabase::LoadCharacterInspectMessage(uint32 character_id, InspectMessage_Struct* message) {

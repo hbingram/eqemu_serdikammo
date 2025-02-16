@@ -279,6 +279,11 @@ void DatabaseDumpService::DatabaseDump()
 		}
 	}
 
+	if (IsDumpStaticInstanceData()) {
+		tables_to_dump += "instance_list";
+		options += " --no-create-info --where=\"instance_list.is_global > 0 and instance_list.never_expires > 0\"";
+	}
+
 	if (!dump_descriptor.empty()) {
 		SetDumpFileName(GetDumpFileName() + dump_descriptor);
 	}
@@ -316,6 +321,10 @@ void DatabaseDumpService::DatabaseDump()
 			tables_to_dump,
 			pipe_file
 		);
+
+		LogInfo("Backing up database [{}]", execute_command);
+		LogInfo("This can take a few minutes depending on the size of your database");
+		LogInfo("LOADING... PLEASE WAIT...");
 
 		BuildCredentialsFile();
 		std::string execution_result = Process::execute(execute_command);
@@ -566,7 +575,12 @@ void DatabaseDumpService::RemoveSqlBackup()
 {
 	std::string file = fmt::format("{}.sql", GetDumpFileNameWithPath());
 	if (File::Exists(file)) {
-		std::filesystem::remove(file);
+		try {
+			std::filesystem::remove(file);
+		}
+		catch (std::exception &e) {
+			LogError("std::filesystem::remove err [{}]", e.what());
+		}
 	}
 
 	RemoveCredentialsFile();
@@ -605,4 +619,14 @@ void DatabaseDumpService::RemoveCredentialsFile()
 	if (File::Exists(CREDENTIALS_FILE)) {
 		std::filesystem::remove(CREDENTIALS_FILE);
 	}
+}
+
+bool DatabaseDumpService::IsDumpStaticInstanceData()
+{
+	return dump_static_instance_data;
+}
+
+void DatabaseDumpService::SetDumpStaticInstanceData(bool b)
+{
+	dump_static_instance_data = b;
 }

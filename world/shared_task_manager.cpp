@@ -460,7 +460,7 @@ void SharedTaskManager::LoadSharedTaskState()
 
 SharedTaskManager *SharedTaskManager::LoadTaskData()
 {
-	m_task_data          = TasksRepository::All(*m_content_database);
+	m_task_data          = TasksRepository::GetWhere(*m_content_database, "enabled = 1");
 	m_task_activity_data = TaskActivitiesRepository::All(*m_content_database);
 
 	LogTasks("Loaded tasks [{}] activities [{}]", m_task_data.size(), m_task_activity_data.size());
@@ -1353,6 +1353,10 @@ bool SharedTaskManager::CanRequestSharedTask(uint32_t task_id, const SharedTaskR
 	if (!is_gm && task.min_players > 0 && request.members.size() < task.min_players) {
 		client_list.SendCharacterMessageID(request.leader_id, Chat::Red, TaskStr::MIN_PLAYERS);
 		return false;
+	}
+
+	if (is_gm) {
+		client_list.SendCharacterMessage(requester->CharID(), Chat::White, "Your GM flag allows you to bypass shared task minimum player requirements.");
 	}
 
 	// check if party member count is above the maximum

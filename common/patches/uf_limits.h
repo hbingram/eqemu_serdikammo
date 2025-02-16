@@ -289,6 +289,7 @@ namespace UF
 		const size_t CHARACTER_CREATION_LIMIT = 12;
 
 		const size_t SAY_LINK_BODY_SIZE = 50;
+		const uint32 MAX_GUILD_ID       = 50000;
 
 	} /*constants*/
 
@@ -328,7 +329,7 @@ namespace UF
 			AltAbility = 0xFF
 		};
 
-		const int SPELL_ID_MAX = 28000;
+		const int SPELL_ID_MAX = 50000;
 		const int SPELLBOOK_SIZE = 720;
 		const int SPELL_GEM_COUNT = static_cast<uint32>(CastingSlot::MaxGems);
 		

@@ -1,3 +1,4 @@
+
 /*	EQEMu: Everquest Server Emulator
 Copyright (C) 2001-2005 EQEMu Development Team (http://eqemulator.net)
 
@@ -47,6 +48,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "../common/events/player_event_logs.h"
 #include "../common/patches/patches.h"
 #include "../zone/data_bucket.h"
+#include "../common/repositories/guild_tributes_repository.h"
+#include "../common/skill_caps.h"
 
 extern ClientList client_list;
 extern GroupLFPList LFPGroupList;
@@ -720,15 +723,15 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			break;
 		}
 		case ServerOP_ZoneShutdown: {
-			auto s = (ServerZoneStateChange_struct*) pack->pBuffer;
+			auto *s = (ServerZoneStateChange_Struct*) pack->pBuffer;
 			ZoneServer* zs = 0;
-			if (s->ZoneServerID) {
-				zs = zoneserver_list.FindByID(s->ZoneServerID);
-			} else if (s->zoneid) {
-				zs = zoneserver_list.FindByName(ZoneName(s->zoneid));
+			if (s->zone_server_id) {
+				zs = zoneserver_list.FindByID(s->zone_server_id);
+			} else if (s->zone_id) {
+				zs = zoneserver_list.FindByName(ZoneName(s->zone_id));
 			} else {
 				zoneserver_list.SendEmoteMessage(
-					s->adminname,
+					s->admin_name,
 					0,
 					AccountStatus::Player,
 					Chat::White,
@@ -738,7 +741,7 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 
 			if (!zs) {
 				zoneserver_list.SendEmoteMessage(
-					s->adminname,
+					s->admin_name,
 					0,
 					AccountStatus::Player,
 					Chat::White,
@@ -751,8 +754,8 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			break;
 		}
 		case ServerOP_ZoneBootup: {
-			auto s = (ServerZoneStateChange_struct*) pack->pBuffer;
-			zoneserver_list.SOPZoneBootup(s->adminname, s->ZoneServerID, ZoneName(s->zoneid), s->makestatic);
+			auto *s = (ServerZoneStateChange_Struct*) pack->pBuffer;
+			zoneserver_list.SOPZoneBootup(s->admin_name, s->zone_server_id, ZoneName(s->zone_id), s->is_static);
 			break;
 		}
 		case ServerOP_ZoneStatus: {
@@ -795,11 +798,29 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 				client = client_list.FindCharacter(ztz->name);
 			}
 
-			LogInfo("ZoneToZone request for [{}] current zone [{}] req zone [{}]", ztz->name, ztz->current_zone_id, ztz->requested_zone_id);
+			LogZoning(
+				"ZoneToZone request for client [{}] guild_id [{}] requested_zone [{}] requested_zone_id [{}] requested_instance_id [{}] current_zone [{}] current_zone_id [{}] current_instance_id [{}] response [{}] admin [{}] ignorerestrictions [{}]",
+				ztz->name,
+				ztz->guild_id,
+				ZoneName(ztz->requested_zone_id),
+				ztz->requested_zone_id,
+				ztz->requested_instance_id,
+				ZoneName(ztz->current_zone_id),
+				ztz->current_zone_id,
+				ztz->current_instance_id,
+				ztz->response,
+				ztz->admin,
+				ztz->ignorerestrictions
+			);
 
 			/* This is a request from the egress zone */
 			if (GetZoneID() == ztz->current_zone_id && GetInstanceID() == ztz->current_instance_id) {
-				LogInfo("Processing ZTZ for egress from zone for client [{}]", ztz->name);
+				LogZoning(
+					"ZoneToZone request for client [{}] for egress from zone [{}]",
+					ztz->name,
+					ZoneName(ztz->current_zone_id),
+					ztz->current_zone_id
+				);
 
 				if (
 					ztz->admin < AccountStatus::QuestTroupe &&
@@ -807,6 +828,14 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 					zoneserver_list.IsZoneLocked(ztz->requested_zone_id)
 				) {
 					ztz->response = 0;
+
+					LogZoning(
+						"ZoneToZone request for client [{}] for egress from zone [{}] denied, zone is locked",
+						ztz->name,
+						ZoneName(ztz->current_zone_id),
+						ztz->current_zone_id
+					);
+
 					SendPacket(pack);
 					break;
 				}
@@ -818,12 +847,25 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 				);
 
 				if (ingress_server) {
-					LogInfo("Found a zone already booted for [{}]", ztz->name);
+					LogZoning(
+						"Found a zone already booted for ZoneToZone for client [{}] for ingress_server from zone [{}] found booted zone",
+						ztz->name,
+						ZoneName(ztz->current_zone_id),
+						ztz->current_zone_id
+					);
+
 					ztz->response = 1;
 				} else {
 					int server_id;
 					if ((server_id = zoneserver_list.TriggerBootup(ztz->requested_zone_id, ztz->requested_instance_id))) {
-						LogInfo("Successfully booted a zone for [{}]", ztz->name);
+						LogZoning(
+							"ZoneToZone successfully booted a zone for character [{}] zone [{}] ({}) instance [{}] ({})",
+							ztz->name,
+							ZoneName(ztz->requested_zone_id),
+							ztz->requested_zone_id,
+							ztz->requested_instance_id,
+							server_id
+						);
 						ztz->response = 1;
 						ingress_server = zoneserver_list.FindByID(server_id);
 					} else {
@@ -841,8 +883,8 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 					ingress_server->SendPacket(pack);	// inform target server
 				}
 			} else {
-				LogInfo(
-					"Processing ZTZ for ingress to zone for client [{}] instance_id [{}] zone_id [{}]",
+				LogZoning(
+					"Processing ZTZ for egress to zone for client [{}] instance_id [{}] zone_id [{}]",
 					ztz->name,
 					ztz->current_instance_id,
 					ztz->current_zone_id
@@ -854,7 +896,13 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 				);
 
 				if (egress_server) {
-					LogInfo("Found egress server, forwarding client");
+					LogZoning(
+						"Found egress server_id [{}] zone_id [{}] zone_name [{}] instance_id [{}], forwarding client",
+						egress_server->GetID(),
+						egress_server->GetZoneID(),
+						egress_server->GetZoneName(),
+						egress_server->GetInstanceID()
+					);
 					egress_server->SendPacket(pack);
 				}
 			}
@@ -933,7 +981,18 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 		case ServerOP_DeleteGuild:
 		case ServerOP_GuildCharRefresh:
 		case ServerOP_GuildMemberUpdate:
-		case ServerOP_RefreshGuild: {
+		case ServerOP_GuildPermissionUpdate:
+		case ServerOP_GuildRankNameChange:
+		case ServerOP_RefreshGuild:
+		case ServerOP_GuildMemberLevelUpdate:
+		case ServerOP_GuildMemberPublicNote:
+		case ServerOP_GuildChannel:
+		case ServerOP_GuildURL:
+		case ServerOP_GuildMemberRemove:
+		case ServerOP_GuildMemberAdd:
+		case ServerOP_GuildSendGuildList:
+		case ServerOP_GuildMembersList:
+		{
 			guild_mgr.ProcessZonePacket(pack);
 			break;
 		}
@@ -1042,7 +1101,7 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			}
 
 			auto smotd = (ServerMotd_Struct*) pack->pBuffer;
-			database.SetVariable("MOTD", smotd->motd);
+			RuleManager::Instance()->SetRule("MOTD", smotd->motd, &database, true, true);
 			zoneserver_list.SendPacket(pack);
 			break;
 		}
@@ -1309,6 +1368,7 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 		}
 		case ServerOP_ReloadOpcodes: {
 			ReloadAllPatches();
+			zoneserver_list.SendPacket(pack);
 			break;
 		}
 		case ServerOP_CZDialogueWindow:
@@ -1340,17 +1400,19 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 		case ServerOP_RefreshCensorship:
 		case ServerOP_ReloadAAData:
 		case ServerOP_ReloadAlternateCurrencies:
+		case ServerOP_ReloadBaseData:
 		case ServerOP_ReloadBlockedSpells:
 		case ServerOP_ReloadCommands:
 		case ServerOP_ReloadDoors:
 		case ServerOP_ReloadDataBucketsCache:
+		case ServerOP_ReloadFactions:
 		case ServerOP_ReloadGroundSpawns:
 		case ServerOP_ReloadLevelEXPMods:
 		case ServerOP_ReloadMerchants:
 		case ServerOP_ReloadNPCEmotes:
+		case ServerOP_ReloadNPCSpells:
 		case ServerOP_ReloadObjects:
 		case ServerOP_ReloadPerlExportSettings:
-		case ServerOP_ReloadRules:
 		case ServerOP_ReloadStaticZoneData:
 		case ServerOP_ReloadTitles:
 		case ServerOP_ReloadTraps:
@@ -1359,8 +1421,10 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 		case ServerOP_ReloadWorld:
 		case ServerOP_ReloadZonePoints:
 		case ServerOP_ReloadZoneData:
+		case ServerOP_ReloadLoot:
 		case ServerOP_RezzPlayerAccept:
 		case ServerOP_SpawnStatusChange:
+		case ServerOP_TraderMessaging:
 		case ServerOP_UpdateSpawn:
 		case ServerOP_WWDialogueWindow:
 		case ServerOP_WWLDoNUpdate:
@@ -1373,6 +1437,41 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 		case ServerOP_WWTaskUpdate:
 		case ServerOP_ZonePlayer: {
 			zoneserver_list.SendPacket(pack);
+			break;
+		}
+		case ServerOP_ReloadSkillCaps: {
+			zoneserver_list.SendPacket(pack);
+			skill_caps.ReloadSkillCaps();
+			break;
+		}
+		case ServerOP_ReloadRules: {
+			zoneserver_list.SendPacket(pack);
+			RuleManager::Instance()->LoadRules(&database, "default", true);
+			break;
+		}
+		case ServerOP_IsOwnerOnline: {
+			if (pack->size != sizeof(ServerIsOwnerOnline_Struct)) {
+				break;
+			}
+
+			auto o = (ServerIsOwnerOnline_Struct*) pack->pBuffer;
+			auto cle = client_list.FindCLEByAccountID(o->account_id);
+
+			o->online = cle ? 1 : 0;
+
+			if (o->online) {
+				LogCorpsesDetail(
+					"ServerOP_IsOwnerOnline account_id [{}] corpse name [{}] found to be online, sending online update to zone_id [{}]",
+					o->account_id,
+					o->name,
+					o->zone_id
+				);
+			}
+
+			auto zs = zoneserver_list.FindByZoneID(o->zone_id);
+			if (zs) {
+				zs->SendPacket(pack);
+			}
 			break;
 		}
 		case ServerOP_ReloadContentFlags: {
@@ -1403,11 +1502,6 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			LogInfo("Loading items");
 			if (!database.LoadItems(hotfix_name)) {
 				LogInfo("Error: Could not load item data. But ignoring");
-			}
-
-			LogInfo("Loading skill caps");
-			if (!content_db.LoadSkillCaps(hotfix_name)) {
-				LogInfo("Error: Could not load skill cap data. But ignoring");
 			}
 
 			zoneserver_list.SendPacket(pack);
@@ -1474,6 +1568,236 @@ void ZoneServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p) {
 			zoneserver_list.SendPacket(pack);
 
 			break;
+		}
+		case ServerOP_GuildTributeUpdate: {
+			auto data  = (GuildTributeUpdate *)pack->pBuffer;
+			auto guild = guild_mgr.GetGuildByGuildID(data->guild_id);
+
+			if (guild) {
+				guild->tribute.enabled        = 0;
+				guild->tribute.id_1           = data->tribute_id_1;
+				guild->tribute.id_2           = data->tribute_id_2;
+				guild->tribute.id_1_tier      = data->tribute_id_1_tier;
+				guild->tribute.id_2_tier      = data->tribute_id_2_tier;
+				guild->tribute.time_remaining = RuleI(Guild, TributeTime);
+
+				guild->tribute.timer.Disable();
+
+				zoneserver_list.SendPacketToBootedZones(pack);
+			}
+			break;
+		}
+		case ServerOP_GuildTributeActivate: {
+			auto data  = (GuildTributeUpdate *)pack->pBuffer;
+			auto guild = guild_mgr.GetGuildByGuildID(data->guild_id);
+
+			if (guild) {
+				guild->tribute.enabled = data->enabled;
+
+				if (guild->tribute.enabled) {
+					data->enabled           = 1;
+					if (guild->tribute.time_remaining == RuleI(Guild, TributeTime)) {
+						data->favor = (guild->tribute.favor -= guild_mgr.GetGuildTributeCost(data->guild_id));
+					}
+					data->time_remaining    = guild->tribute.time_remaining;
+					data->tribute_id_1      = guild->tribute.id_1;
+					data->tribute_id_2      = guild->tribute.id_2;
+					data->tribute_id_1_tier = guild->tribute.id_1_tier;
+					data->tribute_id_2_tier = guild->tribute.id_2_tier;
+
+					guild->tribute.timer.Start(guild->tribute.time_remaining);
+					LogInfo("Guild Tribute Timer Started.");
+				}
+				else {
+					if (guild->tribute.timer.Enabled()) {
+						guild->tribute.time_remaining = guild->tribute.timer.GetRemainingTime();
+					}
+					data->enabled           = 0;
+					data->favor             = guild->tribute.favor;
+					data->time_remaining    = guild->tribute.time_remaining;
+					data->tribute_id_1      = guild->tribute.id_1;
+					data->tribute_id_2      = guild->tribute.id_2;
+					data->tribute_id_1_tier = guild->tribute.id_1_tier;
+					data->tribute_id_2_tier = guild->tribute.id_2_tier;
+					LogInfo("Guild Tribute Timer Stopped with {} ms remaining.", data->time_remaining);
+					guild->tribute.timer.Disable();
+				}
+				guild_mgr.UpdateDbGuildTributeEnabled(data->guild_id, data->enabled);
+				guild_mgr.UpdateDbGuildFavor(data->guild_id, data->favor);
+				guild_mgr.UpdateDbTributeTimeRemaining(data->guild_id, data->time_remaining);
+
+				zoneserver_list.SendPacketToBootedZones(pack);
+			}
+			break;
+		}
+		case ServerOP_GuildTributeOptInToggle:
+		{
+			auto in    = (GuildTributeMemberToggle *)pack->pBuffer;
+			auto guild = guild_mgr.GetGuildByGuildID(in->guild_id);
+			auto c     = client_list.FindCharacter(in->player_name);
+			if (c) {
+				c->SetGuildTributeOptIn(in->tribute_toggle ? true : false);
+			}
+
+			auto cle = client_list.FindCLEByCharacterID(in->char_id);
+			if (cle) {
+				cle->SetGuildTributeOptIn(in->tribute_toggle ? true : false);
+			}
+
+			if (guild) {
+				CharGuildInfo gci;
+				guild_mgr.GetCharInfo(in->char_id, gci);
+
+				auto out  = new ServerPacket(ServerOP_GuildTributeOptInToggle, sizeof(GuildTributeMemberToggle));
+				auto data = (GuildTributeMemberToggle *)out->pBuffer;
+
+				data->char_id             = in->char_id;
+				data->command             = in->command;
+				data->tribute_toggle      = in->tribute_toggle;
+				data->no_donations        = gci.total_tribute;
+				data->member_last_donated = gci.last_tribute;
+				data->guild_id            = in->guild_id;
+				data->time_remaining      = in->time_remaining;
+				strn0cpy(data->player_name, in->player_name, sizeof(data->player_name));
+
+				zoneserver_list.SendPacketToBootedZones(out);
+				safe_delete(out);
+			}
+			break;
+		}
+		case ServerOP_RequestGuildActiveTributes:
+		{
+			auto in    = (GuildTributeUpdate *)pack->pBuffer;
+			auto guild = guild_mgr.GetGuildByGuildID(in->guild_id);
+
+			if (guild) {
+				auto sp  = new ServerPacket(ServerOP_RequestGuildActiveTributes, sizeof(GuildTributeUpdate));
+				auto out = (GuildTributeUpdate *)sp->pBuffer;
+
+				out->guild_id          = in->guild_id;
+				out->enabled           = guild->tribute.enabled;
+				out->favor             = guild->tribute.favor;
+				out->tribute_id_1      = guild->tribute.id_1;
+				out->tribute_id_2      = guild->tribute.id_2;
+				out->tribute_id_1_tier = guild->tribute.id_1_tier;
+				out->tribute_id_2_tier = guild->tribute.id_2_tier;
+				out->time_remaining    = guild_mgr.GetGuildTributeTimeRemaining(in->guild_id);
+
+				zoneserver_list.SendPacketToBootedZones(sp);
+				safe_delete(sp);
+			}
+
+			break;
+		}
+		case ServerOP_RequestGuildFavorAndTimer:
+		{
+			auto in    = (GuildTributeUpdate *)pack->pBuffer;
+			auto guild = guild_mgr.GetGuildByGuildID(in->guild_id);
+
+			if (guild) {
+				auto sp  = new ServerPacket(ServerOP_RequestGuildFavorAndTimer, sizeof(GuildTributeFavorTimer_Struct));
+				auto out = (GuildTributeFavorTimer_Struct *) sp->pBuffer;
+
+				out->guild_id      = in->guild_id;
+				out->guild_favor   = guild->tribute.favor;
+				out->tribute_timer = guild_mgr.GetGuildTributeTimeRemaining(in->guild_id);
+				out->trophy_timer  = 0;
+
+				zoneserver_list.SendPacketToBootedZones(sp);
+				safe_delete(sp);
+			}
+
+			break;
+		}
+		case ServerOP_GuildTributeUpdateDonations:
+		{
+			auto in = (GuildTributeUpdate*)pack->pBuffer;
+			auto guild = guild_mgr.GetGuildByGuildID(in->guild_id);
+
+			if (guild) {
+				guild->tribute.favor = in->favor;
+				guild_mgr.SendGuildTributeFavorAndTimer(in->guild_id, guild->tribute.favor, guild_mgr.GetGuildTributeTimeRemaining(in->guild_id)/*guild->tribute.timer.GetRemainingTime()*/);
+
+				auto sp  = new ServerPacket(ServerOP_GuildTributeUpdateDonations, sizeof(GuildTributeUpdate));
+				auto out = (GuildTributeUpdate *) sp->pBuffer;
+
+				out->guild_id       = in->guild_id;
+				out->member_favor   = in->member_favor;
+				out->member_enabled = in->member_enabled ? true : false;
+				out->member_time    = in->member_time;
+				strn0cpy(out->player_name, in->player_name, sizeof(out->player_name));
+
+				zoneserver_list.SendPacketToBootedZones(sp);
+				safe_delete(sp)
+			}
+			break;
+		}
+		case ServerOP_ParcelDelivery: {
+			auto in = (Parcel_Struct *) pack->pBuffer;
+			if (strlen(in->send_to) == 0) {
+				LogError(
+					"ServerOP_ParcelDelivery pack received with invalid character name of [{}]",
+					in->send_to);
+				return;
+			}
+
+			zoneserver_list.SendPacketToBootedZones(pack);
+			break;
+		}
+		case ServerOP_BazaarPurchase: {
+			auto in = (BazaarPurchaseMessaging_Struct *)pack->pBuffer;
+			if (in->trader_buy_struct.trader_id <= 0) {
+				LogTrading(
+					"World Message <red>[{}] received with invalid trader_id <red>[{}]",
+					"ServerOP_BazaarPurchase",
+					in->trader_buy_struct.trader_id
+				);
+				return;
+			}
+
+			auto trader = client_list.FindCLEByCharacterID(in->trader_buy_struct.trader_id);
+			if (trader) {
+				zoneserver_list.SendPacket(trader->zone(), trader->instance(), pack);
+			}
+
+			break;
+		}
+		case ServerOP_BuyerMessaging: {
+			auto in = (BuyerMessaging_Struct *)pack->pBuffer;
+			switch (in->action) {
+				case Barter_AddToBarterWindow:
+				case Barter_RemoveFromBarterWindow: {
+					if (in->buyer_id <= 0) {
+						LogTrading("World Message <red>[{}] received with invalid buyer_id <red>[{}]",
+								   "ServerOP_BecomeBuyer",
+								   in->buyer_id
+						);
+						return;
+					}
+
+					zoneserver_list.SendPacketToBootedZones(pack);
+					break;
+				}
+				case Barter_SellItem: {
+					auto buyer = client_list.FindCharacter(in->buyer_name);
+					if (buyer) {
+						zoneserver_list.SendPacket(buyer->zone(), buyer->instance(), pack);
+					}
+
+					break;
+				}
+				case Barter_FailedTransaction:
+				case Barter_BuyerTransactionComplete: {
+					auto seller = client_list.FindCharacter(in->seller_name);
+					if (seller) {
+						zoneserver_list.SendPacket(seller->zone(), seller->instance(), pack);
+					}
+
+					break;
+				}
+				default:
+					return;
+			}
 		}
 		default: {
 			LogInfo("Unknown ServerOPcode from zone {:#04x}, size [{}]", pack->opcode, pack->size);
@@ -1557,20 +1881,23 @@ void ZoneServer::ChangeWID(uint32 iCharID, uint32 iWID) {
 
 
 void ZoneServer::TriggerBootup(uint32 in_zone_id, uint32 in_instance_id, const char* admin_name, bool is_static_zone) {
-	is_booting_up = true;
+	is_booting_up       = true;
 	zone_server_zone_id = in_zone_id;
-	instance_id = in_instance_id;
+	instance_id         = in_instance_id;
 
-	auto pack = new ServerPacket(ServerOP_ZoneBootup, sizeof(ServerZoneStateChange_struct));
-	auto s = (ServerZoneStateChange_struct*) pack->pBuffer;
-	s->ZoneServerID = zone_server_id;
+	auto pack = new ServerPacket(ServerOP_ZoneBootup, sizeof(ServerZoneStateChange_Struct));
+	auto *s = (ServerZoneStateChange_Struct*) pack->pBuffer;
+
+	s->zone_server_id = zone_server_id;
+
+	s->zone_id     = in_zone_id ? in_zone_id : GetZoneID();
+	s->instance_id = in_instance_id;
+	s->is_static   = is_static_zone;
+
 	if (admin_name) {
-		strn0cpy(s->adminname, admin_name, sizeof(s->adminname));
+		strn0cpy(s->admin_name, admin_name, sizeof(s->admin_name));
 	}
 
-	s->zoneid = in_zone_id ? in_zone_id : GetZoneID();
-	s->instanceid = in_instance_id;
-	s->makestatic = is_static_zone;
 	SendPacket(pack);
 	delete pack;
 	LSBootUpdate(in_zone_id, in_instance_id);

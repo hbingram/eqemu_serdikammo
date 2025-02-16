@@ -19,18 +19,11 @@
 #define HEAD_POSITION 0.9f	//ratio of GetSize() where NPCs see from
 #define SEE_POSITION 0.5f	//ratio of GetSize() where NPCs try to see for LOS
 
-#define ARCHETYPE_HYBRID	1
-#define ARCHETYPE_CASTER	2
-#define ARCHETYPE_MELEE		3
-
-#define CON_GREEN		2
-#define CON_LIGHTBLUE	18
-#define CON_BLUE		4
-#define CON_WHITE		10
-#define CON_WHITE_TITANIUM		20
-#define CON_YELLOW		15
-#define CON_RED			13
-#define CON_GRAY		6
+namespace Archetype {
+	constexpr uint8 Hybrid = 1;
+	constexpr uint8 Caster = 2;
+	constexpr uint8 Melee  = 3;
+};
 
 #define DMG_BLOCKED		-1
 #define DMG_PARRIED		-2
@@ -153,63 +146,6 @@ typedef enum {	//focus types
 } focusType; //Any new FocusType needs to be added to the Mob::IsFocus function
 #define HIGHEST_FOCUS	focusFcHealAmtCrit //Should always be last focusType in enum
 
-enum {
-	SPECATK_SUMMON = 1,
-	SPECATK_ENRAGE = 2,
-	SPECATK_RAMPAGE = 3,
-	SPECATK_AREA_RAMPAGE = 4,
-	SPECATK_FLURRY = 5,
-	SPECATK_TRIPLE = 6,
-	SPECATK_QUAD = 7,
-	SPECATK_INNATE_DW = 8,
-	SPECATK_BANE = 9,
-	SPECATK_MAGICAL = 10,
-	SPECATK_RANGED_ATK = 11,
-	UNSLOWABLE = 12,
-	UNMEZABLE = 13,
-	UNCHARMABLE = 14,
-	UNSTUNABLE = 15,
-	UNSNAREABLE = 16,
-	UNFEARABLE = 17,
-	UNDISPELLABLE = 18,
-	IMMUNE_MELEE = 19,
-	IMMUNE_MAGIC = 20,
-	IMMUNE_FLEEING = 21,
-	IMMUNE_MELEE_EXCEPT_BANE = 22,
-	IMMUNE_MELEE_NONMAGICAL = 23,
-	IMMUNE_AGGRO = 24,
-	IMMUNE_AGGRO_ON = 25,
-	IMMUNE_CASTING_FROM_RANGE = 26,
-	IMMUNE_FEIGN_DEATH = 27,
-	IMMUNE_TAUNT = 28,
-	NPC_TUNNELVISION = 29,
-	NPC_NO_BUFFHEAL_FRIENDS = 30,
-	IMMUNE_PACIFY = 31,
-	LEASH = 32,
-	TETHER = 33,
-	DESTRUCTIBLE_OBJECT = 34,
-	NO_HARM_FROM_CLIENT = 35,
-	ALWAYS_FLEE = 36,
-	FLEE_PERCENT = 37,
-	ALLOW_BENEFICIAL = 38,
-	DISABLE_MELEE = 39,
-	NPC_CHASE_DISTANCE = 40,
-	ALLOW_TO_TANK = 41,
-	IGNORE_ROOT_AGGRO_RULES = 42,
-	CASTING_RESIST_DIFF = 43,
-	COUNTER_AVOID_DAMAGE = 44,                   //Modify by percent NPC's opponents chance to riposte, block, parry or dodge individually, or for all skills
-	PROX_AGGRO = 45,
-	IMMUNE_RANGED_ATTACKS = 46,
-	IMMUNE_DAMAGE_CLIENT = 47,
-	IMMUNE_DAMAGE_NPC = 48,
-	IMMUNE_AGGRO_CLIENT = 49,
-	IMMUNE_AGGRO_NPC = 50,
-	MODIFY_AVOID_DAMAGE = 51,                    //Modify by percent the NPCs chance to riposte, block, parry or dodge individually, or for all skills
-	IMMUNE_FADING_MEMORIES = 52,
-	IMMUNE_OPEN = 53,
-	MAX_SPECIAL_ATTACK
-};
-
 typedef enum {	//fear states
 	fearStateNotFeared = 0,
 	fearStateRunning,		//I am running, hoping to find a grid at my WP
@@ -283,6 +219,12 @@ enum class LootRequestType : uint8 {
 	AllowedPVPDefined,
 };
 
+enum class KilledByTypes : uint8 {
+	Killed_NPC = 0,
+	Killed_DUEL = 1,
+	Killed_PVP = 2
+};
+
 namespace Journal {
 	enum class SpeakMode : uint8 {
 		Raw = 0,	// this just uses the raw message
@@ -336,7 +278,6 @@ struct StatBonuses {
 	int32	AC;
 	int64	HP;
 	int64	HPRegen;
-	int64	MaxHP;
 	int64	ManaRegen;
 	int64	EnduranceRegen;
 	int64	Mana;
@@ -395,6 +336,7 @@ struct StatBonuses {
 	int32	hastetype2;
 	int32	hastetype3;
 	int32	inhibitmelee;
+	int32	increase_archery;
 	float	AggroRange;							// when calculate just replace original value with this
 	float	AssistRange;
 	int32	skillmod[EQ::skills::HIGHEST_SKILL + 1];
@@ -462,7 +404,7 @@ struct StatBonuses {
 	int32	MeleeLifetap;						//i
 	int32	Vampirism;							//i
 	int32	HealRate;							// Spell effect that influences effectiveness of heals
-	int32	MaxHPChange;						// Spell Effect
+	int64	PercentMaxHPChange;					// base: Max HP change by percentage value from spell effect/item worn effect/aa
 	int16	SkillDmgTaken[EQ::skills::HIGHEST_SKILL + 2];		// All Skills + -1
 	int32	HealAmt;							// Item Effect
 	int32	SpellDmg;							// Item Effect
@@ -494,7 +436,8 @@ struct StatBonuses {
 	int32	SongRange;							// increases range of beneficial bard songs
 	uint32	HPToManaConvert;					// Uses HP to cast spells at specific conversion
 	int32	FocusEffects[HIGHEST_FOCUS+1];		// Stores the focus effectid for each focustype you have.
-	int16	FocusEffectsWorn[HIGHEST_FOCUS+1];	// Optional to allow focus effects to be applied additively from worn slot
+	int16	FocusEffectsWorn[HIGHEST_FOCUS+1];	// Optional to allow focus effects to be applied additively from worn slot, limits do not apply
+	int32	FocusEffectsWornWithLimits[HIGHEST_FOCUS + 1];// Optional to allow focus effects to be applied additively from worn slot, limits apply
 	bool	NegateEffects;						// Check if you contain a buff with negate effect. (only spellbonuses)
 	int32	SkillDamageAmount2[EQ::skills::HIGHEST_SKILL + 2];	// Adds skill specific damage
 	uint32	NegateAttacks[3];					// 0 = bool HasEffect 1 = Buff Slot 2 = Max damage absorbed per hit
@@ -560,6 +503,10 @@ struct StatBonuses {
 	uint8	invisibility;						// invisibility level
 	uint8	invisibility_verse_undead;			// IVU level
 	uint8	invisibility_verse_animal;			// IVA level
+	int32	ShieldTargetSpa[2];                 // [0] base = % mitigation amount, [1] buff slot
+	uint32  ReduceSkill[EQ::skills::HIGHEST_SKILL + 2]; //reduce value of a skill by percentage
+	int64	FlatMaxHPChange;					// base: Max HP change by a flat amount value from spell effect/item worn effect/aa
+
 
 	// AAs
 	int32	TrapCircumvention;					// reduce chance to trigger a trap.
@@ -686,8 +633,8 @@ namespace SBIndex {
 	constexpr uint16 SKILLATK_PROC_SPELL_ID                 = 0; // SPA 288
 	constexpr uint16 SKILLATK_PROC_CHANCE                   = 1; // SPA 288
 	constexpr uint16 SKILLATK_PROC_SKILL                    = 2; // SPA 288
-	constexpr uint16 SLAYUNDEAD_RATE_MOD                    = 0; // SPA 219
-	constexpr uint16 SLAYUNDEAD_DMG_MOD                     = 1; // SPA 219
+	constexpr uint16 SLAYUNDEAD_DMG_MOD                     = 0; // SPA 219
+	constexpr uint16 SLAYUNDEAD_RATE_MOD                    = 1; // SPA 219
 	constexpr uint16 DOUBLE_RIPOSTE_CHANCE                  = 0; // SPA 223
 	constexpr uint16 DOUBLE_RIPOSTE_SKILL_ATK_CHANCE        = 1; // SPA 223
 	constexpr uint16 DOUBLE_RIPOSTE_SKILL                   = 2; // SPA 223
@@ -705,6 +652,8 @@ namespace SBIndex {
 	constexpr uint16 COMBAT_PROC_SPELL_ID                   = 1; // SPA
 	constexpr uint16 COMBAT_PROC_RATE_MOD                   = 2; // SPA
 	constexpr uint16 COMBAT_PROC_REUSE_TIMER                = 3; // SPA
+	constexpr uint16 SHIELD_TARGET_MITIGATION_PERCENT       = 0; // SPA 463
+	constexpr uint16 SHIELD_TARGET_BUFFSLOT                 = 1; // SPA 463
 };
 
 
@@ -880,7 +829,8 @@ struct ExtraAttackOptions {
 		armor_pen_percent(0.0f), armor_pen_flat(0),
 		crit_percent(1.0f), crit_flat(0.0f),
 		hate_percent(1.0f), hate_flat(0), hit_chance(0),
-		melee_damage_bonus_flat(0), skilldmgtaken_bonus_flat(0)
+		melee_damage_bonus_flat(0), skilldmgtaken_bonus_flat(0),
+		range_percent(0)
 	{ }
 
 	float damage_percent;
@@ -894,7 +844,7 @@ struct ExtraAttackOptions {
 	int hit_chance;
 	int melee_damage_bonus_flat;
 	int skilldmgtaken_bonus_flat;
-
+	int range_percent;
 };
 
 struct DamageTable {
@@ -929,6 +879,7 @@ struct DataBucketCache
 	std::string   bucket_value;
 	uint32_t      bucket_expires;
 };
+
 
 #endif
 

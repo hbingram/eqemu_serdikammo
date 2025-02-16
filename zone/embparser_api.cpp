@@ -34,11 +34,14 @@
 #include "questmgr.h"
 #include "zone.h"
 #include "data_bucket.h"
+#include "../common/events/player_event_logs.h"
+#include "worldserver.h"
 
 #include <cctype>
 
 extern Zone      *zone;
 extern QueryServ *QServ;
+extern WorldServer worldserver;
 
 #ifdef EMBPERL_XS_CLASSES
 
@@ -93,13 +96,13 @@ void Perl__say(const char* message)
 	// we currently default to these
 	opts.speak_mode   = Journal::SpeakMode::Say;
 	opts.journal_mode = Journal::Mode::Log2;
-	opts.language     = 0;
+	opts.language     = Language::CommonTongue;
 	opts.message_type = Chat::NPCQuestSay;
 
 	quest_manager.say(message, opts);
 }
 
-void Perl__say(const char* message, int language_id)
+void Perl__say(const char* message, uint8 language_id)
 {
 	Journal::Options opts;
 	opts.speak_mode   = Journal::SpeakMode::Say;
@@ -110,7 +113,7 @@ void Perl__say(const char* message, int language_id)
 	quest_manager.say(message, opts);
 }
 
-void Perl__say(const char* message, int language_id, int message_type)
+void Perl__say(const char* message, uint8 language_id, int message_type)
 {
 	Journal::Options opts;
 	opts.speak_mode   = Journal::SpeakMode::Say;
@@ -121,7 +124,7 @@ void Perl__say(const char* message, int language_id, int message_type)
 	quest_manager.say(message, opts);
 }
 
-void Perl__say(const char* message, int language_id, int message_type, int speak_mode)
+void Perl__say(const char* message, uint8 language_id, int message_type, int speak_mode)
 {
 	Journal::Options opts;
 	opts.speak_mode   = static_cast<Journal::SpeakMode>(speak_mode);
@@ -132,7 +135,7 @@ void Perl__say(const char* message, int language_id, int message_type, int speak
 	quest_manager.say(message, opts);
 }
 
-void Perl__say(const char* message, int language_id, int message_type, int speak_mode, int journal_mode)
+void Perl__say(const char* message, uint8 language_id, int message_type, int speak_mode, int journal_mode)
 {
 	Journal::Options opts;
 	opts.speak_mode   = static_cast<Journal::SpeakMode>(speak_mode);
@@ -313,12 +316,12 @@ int Perl__getinventoryslotid(std::string identifier)
 	return result;
 }
 
-void Perl__castspell(int spell_id, int target_id)
+void Perl__castspell(uint16 spell_id, uint16 target_id)
 {
 	quest_manager.castspell(spell_id, target_id);
 }
 
-void Perl__selfcast(int spell_id)
+void Perl__selfcast(uint16 spell_id)
 {
 	quest_manager.selfcast(spell_id);
 }
@@ -353,47 +356,67 @@ void Perl__zoneraid(const char* zone_name)
 	quest_manager.ZoneRaid(zone_name);
 }
 
-bool Perl__hastimer(const char* timer_name)
+bool Perl__hastimer(std::string timer_name)
 {
 	return quest_manager.hastimer(timer_name);
 }
 
-bool Perl__ispausedtimer(const char* timer_name)
+bool Perl__ispausedtimer(std::string timer_name)
 {
 	return quest_manager.ispausedtimer(timer_name);
 }
 
-uint32_t Perl__getremainingtimeMS(const char* timer_name)
+uint32_t Perl__getremainingtimeMS(std::string timer_name)
 {
 	return quest_manager.getremainingtimeMS(timer_name);
 }
 
-uint32_t Perl__gettimerdurationMS(const char* timer_name)
+uint32_t Perl__gettimerdurationMS(std::string timer_name)
 {
 	return quest_manager.gettimerdurationMS(timer_name);
 }
 
-void Perl__settimer(const char* timer_name, int seconds)
+void Perl__settimer(std::string timer_name, uint32 seconds)
 {
 	quest_manager.settimer(timer_name, seconds);
 }
 
-void Perl__settimerMS(const char* timer_name, int milliseconds)
+void Perl__settimer(std::string timer_name, uint32 seconds, Mob* m)
+{
+	quest_manager.settimer(timer_name, seconds, m);
+}
+
+void Perl__settimer(std::string timer_name, uint32 seconds, EQ::ItemInstance* inst)
+{
+	quest_manager.settimerMS(timer_name, seconds * 1000, inst);
+}
+
+void Perl__settimerMS(std::string timer_name, uint32 milliseconds)
 {
 	quest_manager.settimerMS(timer_name, milliseconds);
 }
 
-void Perl__pausetimer(const char* timer_name)
+void Perl__settimerMS(std::string timer_name, uint32 milliseconds, Mob* m)
+{
+	quest_manager.settimerMS(timer_name, milliseconds, m);
+}
+
+void Perl__settimerMS(std::string timer_name, uint32 milliseconds, EQ::ItemInstance* inst)
+{
+	quest_manager.settimerMS(timer_name, milliseconds, inst);
+}
+
+void Perl__pausetimer(std::string timer_name)
 {
 	quest_manager.pausetimer(timer_name);
 }
 
-void Perl__resumetimer(const char* timer_name)
+void Perl__resumetimer(std::string timer_name)
 {
 	quest_manager.resumetimer(timer_name);
 }
 
-void Perl__stoptimer(const char* timer_name)
+void Perl__stoptimer(std::string timer_name)
 {
 	quest_manager.stoptimer(timer_name);
 }
@@ -493,7 +516,7 @@ void Perl__sfollow()
 	quest_manager.sfollow();
 }
 
-void Perl__changedeity(int deity_id)
+void Perl__changedeity(uint32 deity_id)
 {
 	quest_manager.changedeity(deity_id);
 }
@@ -674,9 +697,9 @@ void Perl__addskill(int skill_id, int value)
 	quest_manager.addskill(skill_id, value);
 }
 
-void Perl__setlanguage(int skill_id, int value)
+void Perl__setlanguage(uint8 language_id, uint8 language_skill)
 {
-	quest_manager.setlanguage(skill_id, value);
+	quest_manager.setlanguage(language_id, language_skill);
 }
 
 void Perl__setskill(int skill_id, int value)
@@ -982,17 +1005,17 @@ bool Perl__summonallplayercorpses(uint32 char_id, float dest_x, float dest_y, fl
 	return quest_manager.summonallplayercorpses(char_id, position);
 }
 
-int Perl__getplayercorpsecount(uint32 char_id)
+int64 Perl__getplayercorpsecount(uint32 character_id)
 {
-	return quest_manager.getplayercorpsecount(char_id);
+	return quest_manager.getplayercorpsecount(character_id);
 }
 
-int Perl__getplayercorpsecountbyzoneid(uint32 char_id, uint32 zone_id)
+int64 Perl__getplayercorpsecountbyzoneid(uint32 character_id, uint32 zone_id)
 {
-	return quest_manager.getplayercorpsecountbyzoneid(char_id, zone_id);
+	return quest_manager.getplayercorpsecountbyzoneid(character_id, zone_id);
 }
 
-int Perl__getplayerburiedcorpsecount(uint32 char_id)
+int64 Perl__getplayerburiedcorpsecount(uint32 char_id)
 {
 	return quest_manager.getplayerburiedcorpsecount(char_id);
 }
@@ -1040,6 +1063,11 @@ void Perl__depopzone(bool start_spawn_status)
 void Perl__repopzone()
 {
 	quest_manager.repopzone();
+}
+
+void Perl__repopzone(bool is_forced)
+{
+	quest_manager.repopzone(is_forced);
 }
 
 void Perl__processmobswhilezoneempty(bool on)
@@ -1248,7 +1276,7 @@ int Perl__tasktimeleft(int task_id)
 	return quest_manager.tasktimeleft(task_id);
 }
 
-int Perl__istaskcompleted(int task_id)
+bool Perl__istaskcompleted(int task_id)
 {
 	return quest_manager.istaskcompleted(task_id);
 }
@@ -1433,6 +1461,16 @@ void Perl__removeitem(uint32_t item_id, int quantity)
 	quest_manager.removeitem(item_id, quantity);
 }
 
+std::string Perl__getitemcomment(uint32 item_id)
+{
+	return quest_manager.getitemcomment(item_id);
+}
+
+std::string Perl__getitemlore(uint32 item_id)
+{
+	return quest_manager.getitemlore(item_id);
+}
+
 std::string Perl__getitemname(uint32 item_id)
 {
 	return quest_manager.getitemname(item_id);
@@ -1544,9 +1582,7 @@ std::string Perl__GetCharactersInInstance(uint16 instance_id)
 		char_id_string = fmt::format("{} player(s) in instance: ", character_ids.size());
 		auto iter = character_ids.begin();
 		while (iter != character_ids.end()) {
-			char char_name[64];
-			database.GetCharName(*iter, char_name);
-			char_id_string += char_name;
+			char_id_string += database.GetCharName(*iter);
 			char_id_string += "(";
 			char_id_string += itoa(*iter);
 			char_id_string += ")";
@@ -1619,20 +1655,19 @@ void Perl__FlagInstanceByRaidLeader(uint32 zone, uint16 version)
 	quest_manager.FlagInstanceByRaidLeader(zone, version);
 }
 
-std::string Perl__saylink(const char* text)
+std::string Perl__saylink(std::string text)
 {
-	// const cast is safe since, target api doesn't modify it
-	return quest_manager.saylink(const_cast<char*>(text), false, text);
+	return Saylink::Create(text);
 }
 
-std::string Perl__saylink(const char* text, bool silent)
+std::string Perl__saylink(std::string text, bool silent)
 {
-	return quest_manager.saylink(const_cast<char*>(text), silent, text);
+	return Saylink::Create(text, silent);
 }
 
-std::string Perl__saylink(const char* text, bool silent, const char* link_name)
+std::string Perl__saylink(std::string text, bool silent, std::string link_name)
 {
-	return quest_manager.saylink(const_cast<char*>(text), silent, link_name);
+	return Saylink::Create(text, silent, link_name);
 }
 
 std::string Perl__getcharnamebyid(uint32 char_id)
@@ -2746,6 +2781,7 @@ bool Perl__IsContentFlagEnabled(std::string flag_name)
 void Perl__SetContentFlag(std::string flag_name, bool enabled)
 {
 	content_service.SetContentFlag(flag_name, enabled);
+	zone->ReloadContentFlags();
 }
 
 Expedition* Perl__get_expedition()
@@ -3480,78 +3516,460 @@ void Perl__crosszonemessageplayerbyname(const char* client_name, uint32 type, co
 	quest_manager.CrossZoneMessage(CZUpdateType_ClientName, update_identifier, type, message, client_name);
 }
 
-void Perl__crosszonemoveplayerbycharid(int character_id, const char* zone_short_name)
+void Perl__crosszonemoveplayerbycharid(uint32 character_id, std::string zone_short_name)
 {
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(CZUpdateType_Character, CZMoveUpdateSubtype_MoveZone, character_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void Perl__crosszonemoveplayerbygroupid(int group_id, const char* zone_short_name)
+void Perl__crosszonemoveplayerbycharid(uint32 character_id, std::string zone_short_name, float x, float y, float z)
 {
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(CZUpdateType_Group, CZMoveUpdateSubtype_MoveZone, group_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void Perl__crosszonemoveplayerbyraidid(int raid_id, const char* zone_short_name)
+void Perl__crosszonemoveplayerbycharid(uint32 character_id, std::string zone_short_name, float x, float y, float z, float heading)
 {
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(CZUpdateType_Raid, CZMoveUpdateSubtype_MoveZone, raid_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void Perl__crosszonemoveplayerbyguildid(int guild_id, const char* zone_short_name)
+void Perl__crosszonemoveplayerbygroupid(uint32 group_id, std::string zone_short_name)
 {
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(CZUpdateType_Guild, CZMoveUpdateSubtype_MoveZone, guild_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void Perl__crosszonemoveplayerbyexpeditionid(uint32 expedition_id, const char* zone_short_name)
+void Perl__crosszonemoveplayerbygroupid(uint32 group_id, std::string zone_short_name, float x, float y, float z)
 {
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(CZUpdateType_Expedition, CZMoveUpdateSubtype_MoveZone, expedition_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void Perl__crosszonemoveplayerbyname(const char* client_name, const char* zone_short_name)
+void Perl__crosszonemoveplayerbygroupid(uint32 group_id, std::string zone_short_name, float x, float y, float z, float heading)
 {
-	int update_identifier = 0;
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(CZUpdateType_ClientName, CZMoveUpdateSubtype_MoveZone, update_identifier, zone_short_name, instance_id, client_name);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void Perl__crosszonemoveinstancebycharid(int character_id, uint16 instance_id)
+void Perl__crosszonemoveplayerbyraidid(uint32 raid_id, std::string zone_short_name)
 {
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(CZUpdateType_Character, CZMoveUpdateSubtype_MoveZoneInstance, character_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void Perl__crosszonemoveinstancebygroupid(int group_id, uint16 instance_id)
+void Perl__crosszonemoveplayerbyraidid(uint32 raid_id, std::string zone_short_name, float x, float y, float z)
 {
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(CZUpdateType_Group, CZMoveUpdateSubtype_MoveZoneInstance, group_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void Perl__crosszonemoveinstancebyraidid(int raid_id, uint16 instance_id)
+void Perl__crosszonemoveplayerbyraidid(uint32 raid_id, std::string zone_short_name, float x, float y, float z, float heading)
 {
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(CZUpdateType_Raid, CZMoveUpdateSubtype_MoveZoneInstance, raid_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void Perl__crosszonemoveinstancebyguildid(int guild_id, uint16 instance_id)
+void Perl__crosszonemoveplayerbyguildid(uint32 guild_id, std::string zone_short_name)
 {
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(CZUpdateType_Guild, CZMoveUpdateSubtype_MoveZoneInstance, guild_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void Perl__crosszonemoveplayerbyguildid(uint32 guild_id, std::string zone_short_name, float x, float y, float z)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void Perl__crosszonemoveplayerbyguildid(uint32 guild_id, std::string zone_short_name, float x, float y, float z, float heading)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void Perl__crosszonemoveplayerbyexpeditionid(uint32 expedition_id, std::string zone_short_name)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void Perl__crosszonemoveplayerbyexpeditionid(uint32 expedition_id, std::string zone_short_name, float x, float y, float z)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void Perl__crosszonemoveplayerbyexpeditionid(uint32 expedition_id, std::string zone_short_name, float x, float y, float z, float heading)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void Perl__crosszonemoveplayerbyname(std::string client_name, std::string zone_short_name)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void Perl__crosszonemoveplayerbyname(std::string client_name, std::string zone_short_name, float x, float y, float z)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void Perl__crosszonemoveplayerbyname(std::string client_name, std::string zone_short_name, float x, float y, float z, float heading)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.instance_id = instance_id,
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id, float x, float y, float z)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebycharid(uint32 character_id, uint16 instance_id, float x, float y, float z, float heading)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.instance_id = instance_id,
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id, float x, float y, float z)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebygroupid(uint32 group_id, uint16 instance_id, float x, float y, float z, float heading)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.instance_id = instance_id,
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id, float x, float y, float z)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebyraidid(uint32 raid_id, uint16 instance_id, float x, float y, float z, float heading)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.instance_id = instance_id,
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id, float x, float y, float z)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebyguildid(uint32 guild_id, uint16 instance_id, float x, float y, float z, float heading)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
 }
 
 void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 instance_id)
 {
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(CZUpdateType_Expedition, CZMoveUpdateSubtype_MoveZoneInstance, expedition_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.instance_id = instance_id,
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
 }
 
-void Perl__crosszonemoveinstancebyclientname(const char* client_name, uint16 instance_id)
+void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 instance_id, float x, float y, float z)
 {
-	int update_identifier = 0;
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(CZUpdateType_ClientName, CZMoveUpdateSubtype_MoveZoneInstance, update_identifier, zone_short_name, instance_id, client_name);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebyexpeditionid(uint32 expedition_id, uint16 instance_id, float x, float y, float z, float heading)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebyclientname(std::string client_name, uint16 instance_id)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.instance_id = instance_id,
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebyclientname(std::string client_name, uint16 instance_id, float x, float y, float z)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void Perl__crosszonemoveinstancebyclientname(std::string client_name, uint16 instance_id, float x, float y, float z, float heading)
+{
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
 }
 
 void Perl__crosszoneremoveldonlossbycharid(int character_id, uint32 theme_id)
@@ -4320,14 +4738,14 @@ std::string Perl__getfactionname(int faction_id)
 	return quest_manager.getfactionname(faction_id);
 }
 
-std::string Perl__getlanguagename(int language_id)
+std::string Perl__getlanguagename(uint8 language_id)
 {
 	return quest_manager.getlanguagename(language_id);
 }
 
-std::string Perl__getbodytypename(uint32 bodytype_id)
+std::string Perl__getbodytypename(uint8 body_type_id)
 {
-	return quest_manager.getbodytypename(bodytype_id);
+	return quest_manager.getbodytypename(body_type_id);
 }
 
 std::string Perl__getconsiderlevelname(uint8 consider_level)
@@ -4523,6 +4941,11 @@ void Perl__set_proximity_range(float x_range, float y_range, float z_range)
 void Perl__set_proximity_range(float x_range, float y_range, float z_range, bool enable_say)
 {
 	quest_manager.set_proximity_range(x_range, y_range, z_range, enable_say);
+}
+
+std::string Perl__varlink(EQ::ItemInstance* inst)
+{
+	return quest_manager.varlink(inst);
 }
 
 std::string Perl__varlink(uint32 item_id)
@@ -5310,6 +5733,26 @@ int Perl__GetZoneMinimumLavaDamage(uint32 zone_id, int version)
 	return zone_store.GetZoneMinimumLavaDamage(zone_id, version);
 }
 
+uint8 Perl__GetZoneIdleWhenEmpty(uint32 zone_id)
+{
+	return zone_store.GetZoneIdleWhenEmpty(zone_id);
+}
+
+uint8 Perl__GetZoneIdleWhenEmpty(uint32 zone_id, int version)
+{
+	return zone_store.GetZoneIdleWhenEmpty(zone_id, version);
+}
+
+uint32 Perl__GetZoneSecondsBeforeIdle(uint32 zone_id)
+{
+	return zone_store.GetZoneSecondsBeforeIdle(zone_id);
+}
+
+uint32 Perl__GetZoneSecondsBeforeIdle(uint32 zone_id, int version)
+{
+	return zone_store.GetZoneSecondsBeforeIdle(zone_id, version);
+}
+
 void Perl__send_channel_message(uint8 channel_number, uint32 guild_id, uint8 language_id, uint8 language_skill, const char* message)
 {
 	quest_manager.SendChannelMessage(channel_number, guild_id, language_id, language_skill, message);
@@ -5344,6 +5787,207 @@ std::string Perl__convert_money_to_string(perl::hash table)
 	return Strings::Money(platinum, gold, silver, copper);
 }
 
+uint8 Perl__GetBotClassByID(uint32 bot_id)
+{
+	return database.botdb.GetBotClassByID(bot_id);
+}
+
+uint8 Perl__GetBotGenderByID(uint32 bot_id)
+{
+	return database.botdb.GetBotGenderByID(bot_id);
+}
+
+perl::array Perl__GetBotIDsByCharacterID(uint32 character_id)
+{
+	perl::array result;
+
+	const auto bot_ids = database.botdb.GetBotIDsByCharacterID(character_id);
+
+	for (int i = 0; i < bot_ids.size(); i++) {
+		result.push_back(bot_ids[i]);
+	}
+
+	return result;
+}
+
+perl::array Perl__GetBotIDsByCharacterID(uint32 character_id, uint8 class_id)
+{
+	perl::array result;
+
+	const auto bot_ids = database.botdb.GetBotIDsByCharacterID(character_id, class_id);
+
+	for (int i = 0; i < bot_ids.size(); i++) {
+		result.push_back(bot_ids[i]);
+	}
+
+	return result;
+}
+
+uint8 Perl__GetBotLevelByID(uint32 bot_id)
+{
+	return database.botdb.GetBotLevelByID(bot_id);
+}
+
+std::string Perl__GetBotNameByID(uint32 bot_id)
+{
+	return database.botdb.GetBotNameByID(bot_id);
+}
+
+uint16 Perl__GetBotRaceByID(uint32 bot_id)
+{
+	return database.botdb.GetBotRaceByID(bot_id);
+}
+
+std::string Perl__silent_saylink(std::string text)
+{
+	return Saylink::Silent(text);
+}
+
+std::string Perl__silent_saylink(std::string text, std::string link_name)
+{
+	return Saylink::Silent(text, link_name);
+}
+
+uint16 Perl__get_class_bitmask(uint8 class_id)
+{
+	return GetPlayerClassBit(class_id);
+}
+
+uint32 Perl__get_deity_bitmask(uint32 deity_id)
+{
+	return Deity::GetBitmask(deity_id);
+}
+
+uint16 Perl__get_race_bitmask(uint16 race_id)
+{
+	return GetPlayerRaceBit(race_id);
+}
+
+std::string Perl__GetAutoLoginCharacterNameByAccountID(uint32 account_id)
+{
+	return quest_manager.GetAutoLoginCharacterNameByAccountID(account_id);
+}
+
+bool Perl__SetAutoLoginCharacterNameByAccountID(uint32 account_id, std::string character_name)
+{
+	return quest_manager.SetAutoLoginCharacterNameByAccountID(account_id, character_name);
+}
+
+uint32 Perl__GetZoneIDByLongName(std::string zone_long_name)
+{
+	return zone_store.GetZoneIDByLongName(zone_long_name);
+}
+
+std::string Perl__GetZoneShortNameByLongName(std::string zone_long_name)
+{
+	return zone_store.GetZoneShortNameByLongName(zone_long_name);
+}
+
+bool Perl__send_parcel(perl::reference table_ref)
+{
+	perl::hash table = table_ref;
+	if (
+		(!table.exists("name") && !table.exists("character_id")) ||
+		!table.exists("item_id") ||
+		!table.exists("quantity")
+	) {
+		return false;
+	}
+
+	std::string name         = table.exists("name") ? table["name"] : std::string();
+	uint32      character_id = table.exists("character_id") ? table["character_id"] : 0;
+
+	if (character_id) {
+		const std::string& character_name = database.GetCharName(character_id);
+		if (character_name.empty()) {
+			return false;
+		}
+
+		name = character_name;
+	} else {
+		auto v = CharacterParcelsRepository::GetParcelCountAndCharacterName(database, name);
+		if (v.at(0).character_name.empty()) {
+			return false;
+		}
+
+		character_id = v.at(0).char_id;
+	}
+
+	if (!character_id) {
+		return false;
+	}
+
+	const int next_parcel_slot = CharacterParcelsRepository::GetNextFreeParcelSlot(database, character_id, RuleI(Parcel, ParcelMaxItems));
+	if (next_parcel_slot == INVALID_INDEX) {
+		return false;
+	}
+
+	const uint32 item_id         = table["item_id"];
+	const int16  quantity        = table["quantity"];
+	const uint32 augment_one     = table.exists("augment_one") ? table["augment_one"] : 0;
+	const uint32 augment_two     = table.exists("augment_two") ? table["augment_two"] : 0;
+	const uint32 augment_three   = table.exists("augment_three") ? table["augment_three"] : 0;
+	const uint32 augment_four    = table.exists("augment_four") ? table["augment_four"] : 0;
+	const uint32 augment_five    = table.exists("augment_five") ? table["augment_five"] : 0;
+	const uint32 augment_six     = table.exists("augment_six") ? table["augment_six"] : 0;
+	const std::string& from_name = table.exists("from_name") ? table["from_name"] : std::string();
+	const std::string& note      = table.exists("note") ? table["note"] : std::string();
+
+	auto e = CharacterParcelsRepository::NewEntity();
+
+	e.char_id    = character_id;
+	e.item_id    = item_id;
+	e.aug_slot_1 = augment_one;
+	e.aug_slot_2 = augment_two;
+	e.aug_slot_3 = augment_three;
+	e.aug_slot_4 = augment_four;
+	e.aug_slot_5 = augment_five;
+	e.aug_slot_6 = augment_six;
+	e.slot_id    = next_parcel_slot;
+	e.quantity   = quantity;
+	e.from_name  = from_name;
+	e.note       = note;
+	e.sent_date  = std::time(nullptr);
+
+	auto out = CharacterParcelsRepository::InsertOne(database, e).id;
+	if (out) {
+		Parcel_Struct ps{};
+		ps.item_slot = e.slot_id;
+		strn0cpy(ps.send_to, name.c_str(), sizeof(ps.send_to));
+
+		std::unique_ptr<ServerPacket> server_packet(new ServerPacket(ServerOP_ParcelDelivery, sizeof(Parcel_Struct)));
+		auto                          data = (Parcel_Struct *) server_packet->pBuffer;
+
+		data->item_slot = ps.item_slot;
+		strn0cpy(data->send_to, ps.send_to, sizeof(data->send_to));
+
+		worldserver.SendPacket(server_packet.get());
+	}
+
+	return out;
+}
+
+bool Perl__aretaskscompleted(perl::array task_ids)
+{
+	std::vector<int> v;
+
+	for (const auto& e : task_ids) {
+		v.emplace_back(static_cast<int>(e));
+	}
+
+	return quest_manager.aretaskscompleted(v);
+}
+
+void Perl__SpawnCircle(uint32 npc_id, float x, float y, float z, float heading, float radius, uint32 points)
+{
+	quest_manager.SpawnCircle(npc_id, glm::vec4(x, y, z, heading), radius, points);
+}
+
+void Perl__SpawnGrid(uint32 npc_id, float x, float y, float z, float heading, float spacing, uint32 spawn_count)
+{
+	quest_manager.SpawnGrid(npc_id, glm::vec4(x, y, z, heading), spacing, spawn_count);
+}
+
 void perl_register_quest()
 {
 	perl::interpreter perl(PERL_GET_THX);
@@ -5374,6 +6018,14 @@ void perl_register_quest()
 	package.add("FlagInstanceByGroupLeader", &Perl__FlagInstanceByGroupLeader);
 	package.add("FlagInstanceByRaidLeader", &Perl__FlagInstanceByRaidLeader);
 	package.add("FlyMode", &Perl__FlyMode);
+	package.add("GetAutoLoginCharacterNameByAccountID", &Perl__GetAutoLoginCharacterNameByAccountID);
+	package.add("GetBotClassByID", &Perl__GetBotClassByID);
+	package.add("GetBotGenderByID", &Perl__GetBotGenderByID);
+	package.add("GetBotIDsByCharacterID", (perl::array(*)(uint32))&Perl__GetBotIDsByCharacterID);
+	package.add("GetBotIDsByCharacterID", (perl::array(*)(uint32, uint8))&Perl__GetBotIDsByCharacterID);
+	package.add("GetBotLevelByID", &Perl__GetBotLevelByID);
+	package.add("GetBotNameByID", &Perl__GetBotNameByID);
+	package.add("GetBotRaceByID", &Perl__GetBotRaceByID);
 	package.add("GetCharactersInInstance", &Perl__GetCharactersInInstance);
 	package.add("GetInstanceID", &Perl__GetInstanceID);
 	package.add("GetInstanceIDByCharID", &Perl__GetInstanceIDByCharID);
@@ -5417,9 +6069,12 @@ void perl_register_quest()
 	package.add("GetZoneGraveyardID", (float(*)(uint32, int))&Perl__GetZoneGraveyardID);
 	package.add("GetZoneHotzone", (uint8(*)(uint32))&Perl__GetZoneHotzone);
 	package.add("GetZoneHotzone", (uint8(*)(uint32, int))&Perl__GetZoneHotzone);
+	package.add("GetZoneIdleWhenEmpty", (uint8(*)(uint32))&Perl__GetZoneIdleWhenEmpty);
+	package.add("GetZoneIdleWhenEmpty", (uint8(*)(uint32, int))&Perl__GetZoneIdleWhenEmpty);
 	package.add("GetZoneInstanceType", (uint8(*)(uint32))&Perl__GetZoneInstanceType);
 	package.add("GetZoneInstanceType", (uint8(*)(uint32, int))&Perl__GetZoneInstanceType);
 	package.add("GetZoneID", &Perl__GetZoneID);
+	package.add("GetZoneIDByLongName", (uint32(*)(std::string))&Perl__GetZoneIDByLongName);
 	package.add("GetZoneExpansion", (int8(*)(uint32))&Perl__GetZoneExpansion);
 	package.add("GetZoneExpansion", (int8(*)(uint32, int))&Perl__GetZoneExpansion);
 	package.add("GetZoneExperienceMultiplier", (float(*)(uint32))&Perl__GetZoneExperienceMultiplier);
@@ -5449,8 +6104,8 @@ void perl_register_quest()
 	package.add("GetZoneFogRed", (uint8(*)(uint32))&Perl__GetZoneFogRed);
 	package.add("GetZoneFogRed", (uint8(*)(uint32, uint8))&Perl__GetZoneFogRed);
 	package.add("GetZoneFogRed", (uint8(*)(uint32, uint8, int))&Perl__GetZoneFogRed);
-	package.add("GetZoneGravity", (float(*)(uint32))&Perl__GetZoneMaximumClip);
-	package.add("GetZoneGravity", (float(*)(uint32, int))&Perl__GetZoneMaximumClip);
+	package.add("GetZoneGravity", (float(*)(uint32))&Perl__GetZoneGravity);
+	package.add("GetZoneGravity", (float(*)(uint32, int))&Perl__GetZoneGravity);
 	package.add("GetZoneMaximumClip", (float(*)(uint32))&Perl__GetZoneMaximumClip);
 	package.add("GetZoneMaximumClip", (float(*)(uint32, int))&Perl__GetZoneMaximumClip);
 	package.add("GetZoneMaximumExpansion", (int8(*)(uint32))&Perl__GetZoneMaximumExpansion);
@@ -5497,6 +6152,10 @@ void perl_register_quest()
 	package.add("GetZoneSafeY", (float(*)(uint32, int))&Perl__GetZoneSafeY);
 	package.add("GetZoneSafeZ", (float(*)(uint32))&Perl__GetZoneSafeZ);
 	package.add("GetZoneSafeZ", (float(*)(uint32, int))&Perl__GetZoneSafeZ);
+	package.add("GetZoneSecondsBeforeIdle", (uint32(*)(uint32))&Perl__GetZoneSecondsBeforeIdle);
+	package.add("GetZoneSecondsBeforeIdle", (uint32(*)(uint32, int))&Perl__GetZoneSecondsBeforeIdle);
+	package.add("GetZoneShortName", (std::string(*)(uint32))&Perl__GetZoneShortName);
+	package.add("GetZoneShortNameByLongName", (std::string(*)(std::string))&Perl__GetZoneShortNameByLongName);
 	package.add("GetZoneShutdownDelay", (uint64(*)(uint32))&Perl__GetZoneShutdownDelay);
 	package.add("GetZoneShutdownDelay", (uint64(*)(uint32, int))&Perl__GetZoneShutdownDelay);
 	package.add("GetZoneSky", (uint8(*)(uint32))&Perl__GetZoneSky);
@@ -5513,7 +6172,6 @@ void perl_register_quest()
 	package.add("GetZoneSuspendBuffs", (uint8(*)(uint32, int))&Perl__GetZoneSuspendBuffs);
 	package.add("GetZoneZType", (uint8(*)(uint32))&Perl__GetZoneZType);
 	package.add("GetZoneZType", (uint8(*)(uint32, int))&Perl__GetZoneZType);
-	package.add("GetZoneShortName", &Perl__GetZoneShortName);
 	package.add("GetZoneTimeType", (uint8(*)(uint32))&Perl__GetZoneTimeType);
 	package.add("GetZoneTimeType", (uint8(*)(uint32, int))&Perl__GetZoneTimeType);
 	package.add("GetZoneTimeZone", (int(*)(uint32))&Perl__GetZoneTimeZone);
@@ -5622,6 +6280,7 @@ void perl_register_quest()
 	package.add("IsTargetRequiredForSpell", &Perl__IsTargetRequiredForSpell);
 	package.add("IsTeleportSpell", &Perl__IsTeleportSpell);
 	package.add("IsTranslocateSpell", &Perl__IsTranslocateSpell);
+	package.add("IsTGBCompatibleSpell", &Perl__IsTGBCompatibleSpell);
 	package.add("IsVeryFastHealSpell", &Perl__IsVeryFastHealSpell);
 	package.add("IsVirusSpell", &Perl__IsVirusSpell);
 	package.add("IsValidSpell", &Perl__IsValidSpell);
@@ -5636,7 +6295,10 @@ void perl_register_quest()
 	package.add("RemoveFromInstanceByCharID", &Perl__RemoveFromInstanceByCharID);
 	package.add("CheckInstanceByCharID", &Perl__CheckInstanceByCharID);
 	package.add("SendMail", &Perl__SendMail);
+	package.add("SetAutoLoginCharacterNameByAccountID", &Perl__SetAutoLoginCharacterNameByAccountID);
 	package.add("SetRunning", &Perl__SetRunning);
+	package.add("SpawnCircle", &Perl__SpawnCircle);
+	package.add("SpawnGrid", &Perl__SpawnGrid);
 	package.add("activespeakactivity", &Perl__activespeakactivity);
 	package.add("activespeaktask", &Perl__activespeaktask);
 	package.add("activetasksinset", &Perl__activetasksinset);
@@ -5651,6 +6313,7 @@ void perl_register_quest()
 	package.add("addloot", (void(*)(int, int))&Perl__addloot);
 	package.add("addloot", (void(*)(int, int, bool))&Perl__addloot);
 	package.add("addskill", &Perl__addskill);
+	package.add("aretaskscompleted", &Perl__aretaskscompleted);
 	package.add("assigntask", (void(*)(int))&Perl__assigntask);
 	package.add("assigntask", (void(*)(int, bool))&Perl__assigntask);
 	package.add("attack", &Perl__attack);
@@ -5761,18 +6424,42 @@ void perl_register_quest()
 	package.add("crosszonemessageplayerbyguildid", &Perl__crosszonemessageplayerbyguildid);
 	package.add("crosszonemessageplayerbyexpeditionid", &Perl__crosszonemessageplayerbyexpeditionid);
 	package.add("crosszonemessageplayerbyname", &Perl__crosszonemessageplayerbyname);
-	package.add("crosszonemoveplayerbycharid", &Perl__crosszonemoveplayerbycharid);
-	package.add("crosszonemoveplayerbygroupid", &Perl__crosszonemoveplayerbygroupid);
-	package.add("crosszonemoveplayerbyraidid", &Perl__crosszonemoveplayerbyraidid);
-	package.add("crosszonemoveplayerbyguildid", &Perl__crosszonemoveplayerbyguildid);
-	package.add("crosszonemoveplayerbyexpeditionid", &Perl__crosszonemoveplayerbyexpeditionid);
-	package.add("crosszonemoveplayerbyname", &Perl__crosszonemoveplayerbyname);
-	package.add("crosszonemoveinstancebycharid", &Perl__crosszonemoveinstancebycharid);
-	package.add("crosszonemoveinstancebygroupid", &Perl__crosszonemoveinstancebygroupid);
-	package.add("crosszonemoveinstancebyraidid", &Perl__crosszonemoveinstancebyraidid);
-	package.add("crosszonemoveinstancebyguildid", &Perl__crosszonemoveinstancebyguildid);
-	package.add("crosszonemoveinstancebyexpeditionid", &Perl__crosszonemoveinstancebyexpeditionid);
-	package.add("crosszonemoveinstancebyclientname", &Perl__crosszonemoveinstancebyclientname);
+	package.add("crosszonemoveplayerbycharid", (void(*)(uint32, std::string))&Perl__crosszonemoveplayerbycharid);
+	package.add("crosszonemoveplayerbycharid", (void(*)(uint32, std::string, float, float, float))&Perl__crosszonemoveplayerbycharid);
+	package.add("crosszonemoveplayerbycharid", (void(*)(uint32, std::string, float, float, float, float))&Perl__crosszonemoveplayerbycharid);
+	package.add("crosszonemoveplayerbygroupid", (void(*)(uint32, std::string))&Perl__crosszonemoveplayerbygroupid);
+	package.add("crosszonemoveplayerbygroupid", (void(*)(uint32, std::string, float, float, float))&Perl__crosszonemoveplayerbygroupid);
+	package.add("crosszonemoveplayerbygroupid", (void(*)(uint32, std::string, float, float, float, float))&Perl__crosszonemoveplayerbygroupid);
+	package.add("crosszonemoveplayerbyraidid", (void(*)(uint32, std::string))&Perl__crosszonemoveplayerbyraidid);
+	package.add("crosszonemoveplayerbyraidid", (void(*)(uint32, std::string, float, float, float))&Perl__crosszonemoveplayerbyraidid);
+	package.add("crosszonemoveplayerbyraidid", (void(*)(uint32, std::string, float, float, float, float))&Perl__crosszonemoveplayerbyraidid);
+	package.add("crosszonemoveplayerbyguildid", (void(*)(uint32, std::string))&Perl__crosszonemoveplayerbyguildid);
+	package.add("crosszonemoveplayerbyguildid", (void(*)(uint32, std::string, float, float, float))&Perl__crosszonemoveplayerbyguildid);
+	package.add("crosszonemoveplayerbyguildid", (void(*)(uint32, std::string, float, float, float, float))&Perl__crosszonemoveplayerbyguildid);
+	package.add("crosszonemoveplayerbyexpeditionid", (void(*)(uint32, std::string))&Perl__crosszonemoveplayerbyexpeditionid);
+	package.add("crosszonemoveplayerbyexpeditionid", (void(*)(uint32, std::string, float, float, float))&Perl__crosszonemoveplayerbyexpeditionid);
+	package.add("crosszonemoveplayerbyexpeditionid", (void(*)(uint32, std::string, float, float, float, float))&Perl__crosszonemoveplayerbyexpeditionid);
+	package.add("crosszonemoveplayerbyname", (void(*)(std::string, std::string))&Perl__crosszonemoveplayerbyname);
+	package.add("crosszonemoveplayerbyname", (void(*)(std::string, std::string, float, float, float))&Perl__crosszonemoveplayerbyname);
+	package.add("crosszonemoveplayerbyname", (void(*)(std::string, std::string, float, float, float, float))&Perl__crosszonemoveplayerbyname);
+	package.add("crosszonemoveinstancebycharid", (void(*)(uint32, uint16))&Perl__crosszonemoveinstancebycharid);
+	package.add("crosszonemoveinstancebycharid", (void(*)(uint32, uint16, float, float, float))&Perl__crosszonemoveinstancebycharid);
+	package.add("crosszonemoveinstancebycharid", (void(*)(uint32, uint16, float, float, float, float))&Perl__crosszonemoveinstancebycharid);
+	package.add("crosszonemoveinstancebygroupid", (void(*)(uint32, uint16))&Perl__crosszonemoveinstancebygroupid);
+	package.add("crosszonemoveinstancebygroupid", (void(*)(uint32, uint16, float, float, float))&Perl__crosszonemoveinstancebygroupid);
+	package.add("crosszonemoveinstancebygroupid", (void(*)(uint32, uint16, float, float, float, float))&Perl__crosszonemoveinstancebygroupid);
+	package.add("crosszonemoveinstancebyraidid", (void(*)(uint32, uint16))&Perl__crosszonemoveinstancebyraidid);
+	package.add("crosszonemoveinstancebyraidid", (void(*)(uint32, uint16, float, float, float))&Perl__crosszonemoveinstancebyraidid);
+	package.add("crosszonemoveinstancebyraidid", (void(*)(uint32, uint16, float, float, float, float))&Perl__crosszonemoveinstancebyraidid);
+	package.add("crosszonemoveinstancebyguildid", (void(*)(uint32, uint16))&Perl__crosszonemoveinstancebyguildid);
+	package.add("crosszonemoveinstancebyguildid", (void(*)(uint32, uint16, float, float, float))&Perl__crosszonemoveinstancebyguildid);
+	package.add("crosszonemoveinstancebyguildid", (void(*)(uint32, uint16, float, float, float, float))&Perl__crosszonemoveinstancebyguildid);
+	package.add("crosszonemoveinstancebyexpeditionid", (void(*)(uint32, uint16))&Perl__crosszonemoveinstancebyexpeditionid);
+	package.add("crosszonemoveinstancebyexpeditionid", (void(*)(uint32, uint16, float, float, float))&Perl__crosszonemoveinstancebyexpeditionid);
+	package.add("crosszonemoveinstancebyexpeditionid", (void(*)(uint32, uint16, float, float, float, float))&Perl__crosszonemoveinstancebyexpeditionid);
+	package.add("crosszonemoveinstancebyclientname", (void(*)(std::string, uint16))&Perl__crosszonemoveinstancebyclientname);
+	package.add("crosszonemoveinstancebyclientname", (void(*)(std::string, uint16, float, float, float))&Perl__crosszonemoveinstancebyclientname);
+	package.add("crosszonemoveinstancebyclientname", (void(*)(std::string, uint16, float, float, float, float))&Perl__crosszonemoveinstancebyclientname);
 	package.add("crosszoneremoveldonlossbycharid", &Perl__crosszoneremoveldonlossbycharid);
 	package.add("crosszoneremoveldonlossbygroupid", &Perl__crosszoneremoveldonlossbygroupid);
 	package.add("crosszoneremoveldonlossbyraidid", &Perl__crosszoneremoveldonlossbyraidid);
@@ -5880,7 +6567,7 @@ void perl_register_quest()
 	package.add("worldwideremovespell", (void(*)(uint32, uint8))&Perl__worldwideremovespell);
 	package.add("worldwideremovespell", (void(*)(uint32, uint8, uint8))&Perl__worldwideremovespell);
 	package.add("worldwideremovetask", (void(*)(uint32))&Perl__worldwideremovetask);
-	package.add("worldwideremovetask", (void(*)(uint32, uint8, uint8))&Perl__worldwideremovetask);
+	package.add("worldwideremovetask", (void(*)(uint32, uint8))&Perl__worldwideremovetask);
 	package.add("worldwideremovetask", (void(*)(uint32, uint8, uint8))&Perl__worldwideremovetask);
 	package.add("worldwideresetactivity", (void(*)(uint32, int))&Perl__worldwideresetactivity);
 	package.add("worldwideresetactivity", (void(*)(uint32, int, uint8))&Perl__worldwideresetactivity);
@@ -5954,9 +6641,11 @@ void perl_register_quest()
 	package.add("getconsiderlevelname", &Perl__getconsiderlevelname);
 	package.add("gethexcolorcode", &Perl__gethexcolorcode);
 	package.add("getcurrencyid", &Perl__getcurrencyid);
+	package.add("get_class_bitmask", &Perl__get_class_bitmask);
 	package.add("get_data", &Perl__get_data);
 	package.add("get_data_expires", &Perl__get_data_expires);
 	package.add("get_data_remaining", &Perl__get_data_remaining);
+	package.add("get_deity_bitmask", &Perl__get_deity_bitmask);
 	package.add("get_dz_task_id", &Perl__get_dz_task_id);
 	package.add("getexpmodifierbycharid", (double(*)(uint32, uint32))&Perl__getexpmodifierbycharid);
 	package.add("getexpmodifierbycharid", (double(*)(uint32, uint32, int16))&Perl__getexpmodifierbycharid);
@@ -5969,6 +6658,8 @@ void perl_register_quest()
 	package.add("get_expedition_lockouts_by_char_id", (perl::reference(*)(uint32, std::string))&Perl__get_expedition_lockouts_by_char_id);
 	package.add("getfactionname", &Perl__getfactionname);
 	package.add("getinventoryslotid", &Perl__getinventoryslotid);
+	package.add("getitemcomment", &Perl__getitemcomment);
+	package.add("getitemlore", &Perl__getitemlore);
 	package.add("getitemname", &Perl__getitemname);
 	package.add("getitemstat", &Perl__getitemstat);
 	package.add("getlanguagename", &Perl__getlanguagename);
@@ -5987,6 +6678,7 @@ void perl_register_quest()
 	package.add("getgroupidbycharid", &Perl__getgroupidbycharid);
 	package.add("getinventoryslotname", &Perl__getinventoryslotname);
 	package.add("getraididbycharid", &Perl__getraididbycharid);
+	package.add("get_race_bitmask", &Perl__get_race_bitmask);
 	package.add("get_recipe_component_item_ids", &Perl__GetRecipeComponentItemIDs);
 	package.add("get_recipe_container_item_ids", &Perl__GetRecipeContainerItemIDs);
 	package.add("get_recipe_fail_item_ids", &Perl__GetRecipeFailItemIDs);
@@ -6103,7 +6795,8 @@ void perl_register_quest()
 	package.add("removeldonwin", &Perl__removeldonwin);
 	package.add("removetitle", &Perl__removetitle);
 	package.add("rename", &Perl__rename);
-	package.add("repopzone", &Perl__repopzone);
+	package.add("repopzone", (void(*)(void))&Perl__repopzone);
+	package.add("repopzone", (void(*)(bool))&Perl__repopzone);
 	package.add("resettaskactivity", &Perl__resettaskactivity);
 	package.add("respawn", &Perl__respawn);
 	package.add("resume", &Perl__resume);
@@ -6112,13 +6805,13 @@ void perl_register_quest()
 	package.add("safemove", &Perl__safemove);
 	package.add("save", &Perl__save);
 	package.add("say", (void(*)(const char*))&Perl__say);
-	package.add("say", (void(*)(const char*, int))&Perl__say);
-	package.add("say", (void(*)(const char*, int, int))&Perl__say);
-	package.add("say", (void(*)(const char*, int, int, int))&Perl__say);
-	package.add("say", (void(*)(const char*, int, int, int, int))&Perl__say);
-	package.add("saylink", (std::string(*)(const char*))&Perl__saylink);
-	package.add("saylink", (std::string(*)(const char*, bool))&Perl__saylink);
-	package.add("saylink", (std::string(*)(const char*, bool, const char*))&Perl__saylink);
+	package.add("say", (void(*)(const char*, uint8))&Perl__say);
+	package.add("say", (void(*)(const char*, uint8, int))&Perl__say);
+	package.add("say", (void(*)(const char*, uint8, int, int))&Perl__say);
+	package.add("say", (void(*)(const char*, uint8, int, int, int))&Perl__say);
+	package.add("saylink", (std::string(*)(std::string))&Perl__saylink);
+	package.add("saylink", (std::string(*)(std::string, bool))&Perl__saylink);
+	package.add("saylink", (std::string(*)(std::string, bool, std::string))&Perl__saylink);
 	package.add("scribespells", (int(*)(int))&Perl__scribespells);
 	package.add("scribespells", (int(*)(int, int))&Perl__scribespells);
 	package.add("secondstotime", &Perl__secondstotime);
@@ -6127,6 +6820,7 @@ void perl_register_quest()
 	package.add("send_channel_message", (void(*)(uint8, uint32, uint8, uint8, const char*))&Perl__send_channel_message);
 	package.add("send_channel_message", (void(*)(Client*, uint8, uint32, uint8, uint8, const char*))&Perl__send_channel_message);
 	package.add("send_channel_message", (void(*)(Client*, const char*, uint8, uint32, uint8, uint8, const char*))&Perl__send_channel_message);
+	package.add("send_parcel", &Perl__send_parcel);
 	package.add("setaaexpmodifierbycharid", (void(*)(uint32, uint32, double))&Perl__setaaexpmodifierbycharid);
 	package.add("setaaexpmodifierbycharid", (void(*)(uint32, uint32, double, int16))&Perl__setaaexpmodifierbycharid);
 	package.add("set_data", (void(*)(std::string, std::string))&Perl__set_data);
@@ -6156,8 +6850,12 @@ void perl_register_quest()
 	package.add("settarget", &Perl__settarget);
 	package.add("settime", (void(*)(int, int))&Perl__settime);
 	package.add("settime", (void(*)(int, int, bool))&Perl__settime);
-	package.add("settimer", &Perl__settimer);
-	package.add("settimerMS", &Perl__settimerMS);
+	package.add("settimer", (void(*)(std::string, uint32))&Perl__settimer);
+	package.add("settimer", (void(*)(std::string, uint32, EQ::ItemInstance*))&Perl__settimer);
+	package.add("settimer", (void(*)(std::string, uint32, Mob*))&Perl__settimer);
+	package.add("settimerMS", (void(*)(std::string, uint32))&Perl__settimerMS);
+	package.add("settimerMS", (void(*)(std::string, uint32, EQ::ItemInstance*))&Perl__settimerMS);
+	package.add("settimerMS", (void(*)(std::string, uint32, Mob*))&Perl__settimerMS);
 	package.add("sfollow", &Perl__sfollow);
 	package.add("shout", &Perl__shout);
 	package.add("shout2", &Perl__shout2);
@@ -6166,6 +6864,8 @@ void perl_register_quest()
 	package.add("signal", (void(*)(int, int))&Perl__signal);
 	package.add("signalwith", (void(*)(int, int))&Perl__signalwith);
 	package.add("signalwith", (void(*)(int, int, int))&Perl__signalwith);
+	package.add("silent_saylink", (std::string(*)(std::string))&Perl__silent_saylink);
+	package.add("silent_saylink", (std::string(*)(std::string, std::string))&Perl__silent_saylink);
 	package.add("snow", &Perl__snow);
 	package.add("spawn", &Perl__spawn);
 	package.add("spawn2", &Perl__spawn2);
@@ -6203,6 +6903,7 @@ void perl_register_quest()
 	package.add("updatetaskactivity", (void(*)(int, int, int))&Perl__updatetaskactivity);
 	package.add("updatetaskactivity", (void(*)(int, int, int, bool))&Perl__updatetaskactivity);
 	package.add("UpdateZoneHeader", &Perl__UpdateZoneHeader);
+	package.add("varlink", (std::string(*)(EQ::ItemInstance*))&Perl__varlink);
 	package.add("varlink", (std::string(*)(uint32))&Perl__varlink);
 	package.add("varlink", (std::string(*)(uint32, int16))&Perl__varlink);
 	package.add("varlink", (std::string(*)(uint32, int16, uint32))&Perl__varlink);

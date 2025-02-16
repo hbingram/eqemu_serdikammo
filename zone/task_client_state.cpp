@@ -419,7 +419,7 @@ void ClientTaskState::RecordCompletedTask(uint32_t character_id, const TaskInfor
 			[&](const CompletedTaskInformation& completed) { return completed.task_id == client_task.task_id; }
 		), m_completed_tasks.end());
 
-		size_t erased = m_completed_tasks.size() - before;
+		size_t erased = before - m_completed_tasks.size();
 
 		LogTasksDetail("KeepOneRecord erased [{}] elements", erased);
 
@@ -869,7 +869,12 @@ int ClientTaskState::IncrementDoneCount(
 	if (task_data->type != TaskType::Shared) {
 		// live messages for each increment of non-shared tasks
 		auto activity_type = task_data->activity_information[activity_id].activity_type;
-		int msg_count = activity_type == TaskActivityType::GiveCash ? 1 : count;
+		int msg_count = 1;
+
+		if (activity_type != TaskActivityType::GiveCash) {
+			msg_count = std::min(count, RuleI(TaskSystem, MaxUpdateMessages));
+		}
+
 		for (int i = 0; i < msg_count; ++i) {
 			client->MessageString(Chat::DefaultText, TASK_UPDATED, task_data->title.c_str());
 		}
@@ -1057,6 +1062,7 @@ void ClientTaskState::RewardTask(Client *c, const TaskInformation *ti, ClientTas
 
 	// just use normal NPC faction ID stuff
 	if (ti->faction_reward && ti->faction_amount == 0) {
+		zone->LoadNPCFaction(ti->faction_reward);
 		c->SetFactionLevel(
 			c->CharacterID(),
 			ti->faction_reward,
@@ -1065,6 +1071,8 @@ void ClientTaskState::RewardTask(Client *c, const TaskInformation *ti, ClientTas
 			c->GetDeity()
 		);
 	} else if (ti->faction_reward != 0 && ti->faction_amount != 0) {
+		// faction_reward is a faction ID
+		zone->LoadFactionAssociation(ti->faction_reward);
 		c->RewardFaction(
 			ti->faction_reward,
 			ti->faction_amount
@@ -1088,22 +1096,22 @@ void ClientTaskState::RewardTask(Client *c, const TaskInformation *ti, ClientTas
 
 	auto experience_reward = ti->experience_reward;
 	if (experience_reward > 0) {
-		c->AddEXP(experience_reward);
+		c->AddEXP(ExpSource::Task, experience_reward);
 	} else if (experience_reward < 0) {
 		uint32 pos_reward = experience_reward * -1;
 		// Minimal Level Based Exp reward Setting is 101 (1% exp at level 1)
 		if (pos_reward > 100 && pos_reward < 25700) {
 			uint8 max_level   = pos_reward / 100;
 			uint8 exp_percent = pos_reward - (max_level * 100);
-			c->AddLevelBasedExp(exp_percent, max_level, RuleB(TaskSystem, ExpRewardsIgnoreLevelBasedEXPMods));
+			c->AddLevelBasedExp(ExpSource::Task, exp_percent, max_level, RuleB(TaskSystem, ExpRewardsIgnoreLevelBasedEXPMods));
 		}
 	}
 
 	if (ti->reward_points > 0) {
 		if (ti->reward_point_type == static_cast<int32_t>(zone->GetCurrencyID(RADIANT_CRYSTAL))) {
-			c->AddCrystals(ti->reward_points, 0);
+			c->AddRadiantCrystals(ti->reward_points);
 		} else if (ti->reward_point_type == static_cast<int32_t>(zone->GetCurrencyID(EBON_CRYSTAL))) {
-			c->AddCrystals(0, ti->reward_points);
+			c->AddEbonCrystals(ti->reward_points);
 		} else {
 			for (const auto& ac : zone->AlternateCurrencies) {
 				if (ti->reward_point_type == ac.id) {
@@ -1396,6 +1404,28 @@ void ClientTaskState::ResetTaskActivity(Client *client, int task_id, int activit
 	);
 }
 
+bool ClientTaskState::CompleteTask(Client *c, uint32 task_id)
+{
+	const auto task_data = task_manager->GetTaskData(task_id);
+	if (!task_data) {
+		return false;
+	}
+
+	for (
+		int activity_id = 0;
+		activity_id < task_manager->GetActivityCount(task_id);
+		activity_id++
+	) {
+		c->UpdateTaskActivity(
+			task_id,
+			activity_id,
+			task_data->activity_information[activity_id].goal_count
+		);
+	}
+
+	return true;
+}
+
 void ClientTaskState::ShowClientTaskInfoMessage(ClientTaskInformation *task, Client *c)
 {
 	const auto task_data = task_manager->GetTaskData(task->task_id);
@@ -1553,25 +1583,35 @@ int ClientTaskState::TaskTimeLeft(int task_id)
 	return -1;
 }
 
-int ClientTaskState::IsTaskCompleted(int task_id)
+bool ClientTaskState::IsTaskCompleted(int task_id)
 {
-
-	// Returns:	-1 if RecordCompletedTasks is not true
-	//		+1 if the task has been completed
-	//		0 if the task has not been completed
-
-	if (!(RuleB(TaskSystem, RecordCompletedTasks))) {
-		return -1;
+	if (!RuleB(TaskSystem, RecordCompletedTasks)) {
+		return false;
 	}
 
-	for (auto &completed_task : m_completed_tasks) {
-		LogTasks("Comparing compelted task [{}] with [{}]", completed_task.task_id, task_id);
-		if (completed_task.task_id == task_id) {
-			return 1;
+	for (const auto& e : m_completed_tasks) {
+		LogTasks("Comparing completed task [{}] with [{}]", e.task_id, task_id);
+		if (e.task_id == task_id) {
+			return true;
 		}
 	}
 
-	return 0;
+	return false;
+}
+
+bool ClientTaskState::AreTasksCompleted(const std::vector<int>& task_ids)
+{
+	if (!RuleB(TaskSystem, RecordCompletedTasks)) {
+		return false;
+	}
+
+	for (const auto& e : task_ids) {
+		if (!IsTaskCompleted(e)) {
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool ClientTaskState::TaskOutOfTime(TaskType task_type, int index)
@@ -2265,8 +2305,8 @@ void ClientTaskState::CreateTaskDynamicZone(Client* client, int task_id, Dynamic
 	}
 
 	// dz should be named the version-based zone name (used in choose zone window and dz window on live)
-	auto zone_info = zone_store.GetZone(dz_request.GetZoneID(), dz_request.GetZoneVersion());
-	dz_request.SetName(zone_info->long_name.empty() ? task->title : zone_info->long_name);
+	auto zone_info = zone_store.GetZoneWithFallback(dz_request.GetZoneID(), dz_request.GetZoneVersion());
+	dz_request.SetName(zone_info && !zone_info->long_name.empty() ? zone_info->long_name : task->title);
 	dz_request.SetMinPlayers(task->min_players);
 	dz_request.SetMaxPlayers(task->max_players);
 

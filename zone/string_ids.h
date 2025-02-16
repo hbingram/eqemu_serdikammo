@@ -55,6 +55,7 @@
 #define MISS_NOTE					180		//You miss a note, bringing your song to a close!
 #define CANNOT_USE_ITEM				181		//Your race, class, or deity cannot use this item.
 #define ITEM_OUT_OF_CHARGES			182		//Item is out of charges.
+#define ALREADY_ON_A_MOUNT			189		//You are already on a mount.
 #define TARGET_NO_MANA				191		//Your target has no mana to affect
 #define TARGET_GROUP_MEMBER			196		//You must first target a group member.
 #define SPELL_TOO_POWERFUL			197		//Your spell is too powerful for your intended target.
@@ -63,6 +64,8 @@
 #define SAC_TOO_HIGH				204		//This being is too powerful to be a sacrifice.
 #define CANNOT_SAC_SELF				205		//You cannot sacrifice yourself.
 #define SILENCED_STRING				207		//You *CANNOT* cast spells, you have been silenced!
+#define CAST_DAYTIME                208		//Spell can only be cast during the day.
+#define CAST_NIGHTTIME              209		//Spell can only be cast during the night.
 #define CANNOT_AFFECT_PC			210		//That spell can not affect this target PC.
 #define SPELL_NEED_TAR				214		//You must first select a target for this spell!
 #define SUMMON_ONLY_GROUP_CORPSE	215		//You must first target a living group member whose corpse you wish to summon.
@@ -122,7 +125,8 @@
 #define FAIL_DISARM_DETECTED_TRAP	370		//You fail to disarm the detected trap.
 #define LOOT_LORE_ERROR				371		//You cannot loot this Lore Item. You already have one.
 #define PICK_LORE					379		//You cannot pick up a lore item you already possess.
-#define POISON_TOO_HIGH				382		// This poison is too high level for you to apply.
+#define POISON_TOO_HIGH				382		//This poison is too high level for you to apply.
+#define TAUNT_TOO_FAR				386		//You are too far away from your target to taunt.
 #define CORPSE_TOO_FAR				389		//The corpse is too far away to summon.
 #define CONSENT_DENIED				390		//You do not have consent to summon that corpse.
 #define DISCIPLINE_RDY				393		//You are ready to use a new discipline now.
@@ -136,6 +140,7 @@
 #define SONG_NEEDS_BRASS			408		//You need to play a brass instrument for this song
 #define AA_GAIN_ABILITY				410		//You have gained the ability "%T1" at a cost of %2 ability %T3.
 #define AA_IMPROVE					411		//You have improved %T1 %2 at a cost of %3 ability %T4.
+#define TAUNT_SUCCESS				412		//You taunt %1 to ignore others and attack you!
 #define AA_REUSE_MSG				413		//You can use the ability %B1(1) again in %2 hour(s) %3 minute(s) %4 seconds.
 #define AA_REUSE_MSG2				414		//You can use the ability %B1(1) again in %2 minute(s) %3 seconds.
 #define YOU_HEALED					419		//%1 has healed you for %2 points of damage.
@@ -167,14 +172,20 @@
 #define PET_REPORT_HP				488		//I have %1 percent of my hit points left.
 #define PET_NO_TAUNT				489		//No longer taunting attackers, Master.
 #define PET_DO_TAUNT				490		//Taunting attackers as normal, Master.
-#define CORPSE_DECAY1				495		//This corpse will decay in %1 minute(s) %2 seconds.
+#define CORPSE_REZ_TIME_HOUR        491     //This corpse's resurrection time will expire in %1 hour(s) %2 minute(s) %3 seconds.
+#define CORPSE_REZ_TIME_MINUTE      492     //This corpse's resurrection time will expire in %1 minute(s) %2 seconds.
+#define CORPSE_DECAY_TIME_DAY       493     //This corpse will decay in %1 day(s) %2 hour(s) %3 minute(s) %4 seconds.
+#define CORPSE_DECAY_TIME_HOUR      494     //This corpse will decay in %1 hour(s) %2 minute(s) %3 seconds.
+#define CORPSE_DECAY_TIME_MINUTE    495		//This corpse will decay in %1 minute(s) %2 seconds.
 #define DISC_LEVEL_ERROR			503		//You must be a level %1 ... to use this discipline.
 #define DISCIPLINE_CANUSEIN			504		//You can use a new discipline in %1 minutes %2 seconds.
+#define SHARE_MONEY					511		//%1 shares money with the group.
 #define PVP_ON						552		//You are now player kill and follow the ways of Discord.
 #define GENERIC_STRINGID_SAY		554		//%1 says '%T2'
 #define CANNOT_WAKE					555		//%1 tells you, 'I am unable to wake %2, master.'
 #define SUMMONING_CORPSE_ZONE		596		//Summoning %1's corpse(s).
 #define TASK_NOT_RIGHT_LEVEL        615     //You are not at the right level for this task.
+#define INVITE_GROUP_LEADER			679		//To invite another group into yours, please invite the leader of the other group.
 #define PET_HOLD_SET_ON				698		//The pet hold mode has been set to on.
 #define PET_HOLD_SET_OFF			699		//The pet hold mode has been set to off.
 #define PET_FOCUS_SET_ON			700		//The pet focus mode has been set to on.
@@ -182,6 +193,11 @@
 #define PET_SPELLHOLD_SET_ON		702		//The pet spellhold mode has been set to on.
 #define PET_SPELLHOLD_SET_OFF		703		//The pet spellhold mode has been set to off.
 #define GUILD_NAME_IN_USE			711		//You cannot create a guild with that name, that guild already exists on this server.
+#define PARCEL_DELAY                734     //%1 tells you, 'You must give me a chance to send the last parcel before I can send another!'
+#define PARCEL_DUPLICATE_DELETE     737     //Duplicate lore items are not allowed! Your duplicate %1 has been deleted!
+#define PARCEL_DELIVER_3            741     //%1 told you, 'I will deliver the stack of %2 %3 to %4 as soon as possible!'
+#define TRADER_MODE_FAILED_ROF2	    785     //Your attempt to become a trader has failed.
+#define PARCEL_INV_FULL             790     //%1 tells you, 'Your inventory appears full!  Unable to retrieve parceled item.'
 #define AA_CAP						1000	//You have reached the AA point cap, and cannot gain any further experience until some of your stored AA point pool is used.
 #define GM_GAINXP					1002	//[GM] You have gained %1 AXP and %2 EXP (%3).
 #define MALE_SLAYUNDEAD				1007	//%1's holy blade cleanses his target!(%2)
@@ -189,6 +205,7 @@
 #define FINISHING_BLOW				1009	//%1 scores a Finishing Blow!!
 #define ASSASSINATES				1016	//%1 ASSASSINATES their victim!!
 #define CRIPPLING_BLOW				1021	//%1 lands a Crippling Blow!(%2)
+#define STAGGERS					1022	//%1 staggers.
 #define CRITICAL_HIT				1023	//%1 scores a critical hit! (%2)
 #define DEADLY_STRIKE				1024	//%1 scores a Deadly Strike!(%2)
 #define RESISTS_URGE				1025	//%1 resists their urge to flee.
@@ -267,7 +284,9 @@
 #define SPARKLES					1236	//Your %1 sparkles.
 #define GROWS_DIM					1237	//Your %1 grows dim.
 #define BEGINS_TO_SHINE				1238	//Your %1 begins to shine.
+#define CANT_FIND_PLAYER			1276 	//I can't find a player named %1!
 #define SURNAME_REJECTED			1374	//Your new surname was rejected. Please try a different name.
+#define GUILD_DISBANDED				1377    //Your guild has been disbanded!  You are no longer a member of any guild.
 #define DUEL_DECLINE				1383	//%1 has declined your challenge to duel to the death.
 #define DUEL_ACCEPTED				1384	//%1 has already accepted a duel with someone else.
 #define DUEL_CONSIDERING			1385	//%1 is considering a duel with someone else.
@@ -291,6 +310,7 @@
 #define SENSE_CORPSE_DIRECTION		1563	//You sense a corpse in this direction.
 #define QUEUED_TELL					2458	//[queued]
 #define QUEUE_TELL_FULL				2459	//[zoing and queue is full]
+#define TRADER_BUSY_TWO             3192    //Sorry, that action cannot be performed while trading.
 #define SUSPEND_MINION_UNSUSPEND	3267	//%1 tells you, 'I live again...'
 #define SUSPEND_MINION_SUSPEND		3268	//%1 tells you, 'By your command, master.'
 #define ONLY_SUMMONED_PETS			3269	//3269 This effect only works with summoned pets.
@@ -370,9 +390,13 @@
 #define ALREADY_IN_YOUR_RAID		5077	//%1 is already in your raid.
 #define NOT_IN_YOUR_RAID            5082	//%1 is not in your raid.
 #define GAIN_RAIDEXP				5085	//You gained raid experience!
+#define ALREADY_IN_GRP_RAID			5088	//% 1 rejects your invite because they are in a raid and you are not in theirs, or they are a raid group leader
 #define DUNGEON_SEALED				5141	//The gateway to the dungeon is sealed off to you.  Perhaps you would be able to enter if you needed to adventure there.
 #define ADVENTURE_COMPLETE			5147	//You received %1 points for successfully completing the adventure.
+#define PARCEL_STATUS_2				5433	//You currently have % 1 parcels in your mail and are % 2 parcels over the limit of % 3!If you do not retrieve at least % 2 parcels before you logout, they will be lost!
+#define PARCEL_STATUS_1				5434	//You currently have % 1 parcels in your mail and are 1 parcel over the limit of % 2!If you do not retrieve at least 1 parcel before you logout, it will be lost!
 #define SUCCOR_FAIL					5169	//The portal collapes before you can escape!
+#define NO_PROPER_ACCESS			5410    //You don't have the proper access rights.
 #define AUGMENT_RESTRICTED			5480	//The item does not satisfy the augment's restrictions.
 #define PET_ATTACKING				5501	//%1 tells you, 'Attacking %2 Master.'
 #define AVOID_STUNNING_BLOW			5753	//You avoid the stunning blow.
@@ -389,6 +413,8 @@
 #define MAX_ACTIVE_TASKS			6010	//Sorry %3, you already have the maximum number of active tasks.
 #define TASK_REQUEST_COOLDOWN_TIMER 6011    //Sorry, %3, but you can't request another task for %4 minutes and %5 seconds.
 #define FORAGE_MASTERY				6012	//Your forage mastery has enabled you to find something else!
+#define BUYER_WELCOME               6065    //There are %1 Buyers waiting to purchase your loot.  Type /barter to search for them, or use /buyer to set up your own Buy Lines.
+#define BUYER_GREETING              6070    //%1 greets you, '%2'
 #define GUILD_BANK_CANNOT_DEPOSIT	6097	// Cannot deposit this item. Containers must be empty, and only one of each LORE and no NO TRADE or TEMPORARY items may be deposited.
 #define GUILD_BANK_FULL				6098	// There is no more room in the Guild Bank.
 #define GUILD_BANK_TRANSFERRED  	6100	// '%1' transferred to Guild Bank from Deposits.
@@ -397,9 +423,18 @@
 #define TRANSFORM_FAILED			6326	//This mold cannot be applied to your %1.
 #define TRANSFORM_COMPLETE			6327	//You have successfully transformed your %1.
 #define DETRANSFORM_FAILED			6341 	//%1 has no transformation that can be removed.
+#define GUILD_PERMISSION_FAILED		6418	//You do not have permission to change access options.
+#define PARCEL_DELIVERY_ARRIVED		6465	//You have received a new parcel delivery!
+#define PARCEL_DELIVERY				6466	//%1 tells you, 'I will deliver the %2 to %3 as soon as possible!'
+#define PARCEL_UNKNOWN_NAME			6467	//%1 tells you, 'Unfortunately, I don't know anyone by the name of %2. Here is your %3 back.''
+#define PARCEL_DELIVERED			6471	//%1 hands you the %2 that was sent from %3.
+#define PARCEL_DELIVERED_2			6472	//%1 hands you the stack of %2 %3 that was sent from %4.
 #define GENERIC_STRING				6688	//%1 (used to any basic message)
 #define SENTINEL_TRIG_YOU			6724	//You have triggered your sentinel.
 #define SENTINEL_TRIG_OTHER			6725	//%1 has triggered your sentinel.
+#define TRADER_MODE_OFF				6741 	//Bazaar Trader Mode *OFF*
+#define TRADER_MODE_ON				6742 	//Bazaar Trader Mode *ON*
+#define TRADER_SET_PRICE			6754 	//To become a merchant you must assign a price to an item in your list. Do this by selecting an item, then selecting a money amount, and then clicking set price.
 #define IDENTIFY_SPELL				6765	//Item Lore: %1.
 #define PET_NOW_HOLDING				6834	//Now holding, Master.  I will not start attacks until ordered.
 #define PET_ON_GHOLD				6843	//Pet greater hold has been set to on.
@@ -469,6 +504,10 @@
 #define NO_CAST_OUT_OF_COMBAT		9191	//You can not cast this spell while out of combat.
 #define NO_ABILITY_IN_COMBAT		9192	//You can not use this ability while in combat.
 #define NO_ABILITY_OUT_OF_COMBAT	9194	//You can not use this ability while out of combat.
+#define GAIN_GROUPXP_BONUS			9298	//You gain party experience (with a bonus)!
+#define GAIN_GROUPXP_PENALTY		9301	//You gain party experience (with a penalty)!
+#define GAIN_RAIDXP_BONUS			9302	//You gained raid experience (with a bonus)!
+#define GAIN_RAIDXP_PENALTY			9303	//You gained raid experience (with a penalty)!
 #define LESSER_SPELL_VERSION        11004   //%1 is a lesser version of %2 and cannot be scribed
 #define AE_RAMPAGE					11015	//%1 goes on a WILD RAMPAGE!
 #define GROUP_IS_FULL				12000	//You cannot join that group, it is full.
@@ -494,6 +533,8 @@
 #define GROUP_INVITEE_NOT_FOUND		12268	//You must target a player or use /invite <name> to invite someone to your group.
 #define GROUP_INVITEE_SELF			12270	//12270 You cannot invite yourself.
 #define ALREADY_IN_PARTY			12272	//That person is already in your party.
+#define TALKING_TO_SELF				12323	//Talking to yourself again?
+#define SPLIT_NO_GROUP				12328	//You are not in a group! Keep it all.
 #define NO_LONGER_HIDDEN			12337   //You are no longer hidden.
 #define STOP_SNEAKING				12338	//You stop sneaking
 #define NOT_IN_CONTROL				12368	//You do not have control of yourself right now.
@@ -544,11 +585,16 @@
 #define HOT_HEAL_OTHER				12997	//You have healed %1 for %2 hit points with your %3.
 #define HOT_HEALED_OTHER			12998	//%1 healed you for %2 hit points by %3.
 #define DISC_LEVEL_USE_ERROR		13004	//You are not sufficient level to use this discipline.
+#define SPLIT_FAIL					13112	//There is not enough to split, keep it.
 #define TOGGLE_ON					13172	//Asking server to turn ON your incoming tells.
 #define TOGGLE_OFF					13173	//Asking server to turn OFF all incoming tells for you.
 #define DUEL_INPROGRESS				13251	//You have already accepted a duel with someone else cowardly dog.
 #define OTHER_HIT_DOT				13327	//%1 has taken %2 damage from %3 by %4.
+#define GAIN_XP_BONUS				14541	//You gain experience (with a bonus)!
+#define GAIN_XP_PENALTY				14542	//You gain experience (with a penalty)!
 #define GENERIC_MISS				15041	//%1 missed %2
+#define SPELL_REQUIRES_STATS		16000	//Character statistics required
+#define DISC_REQUIRES_STATS			16001	//Character statistics required
 
 #endif
 

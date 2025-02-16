@@ -57,11 +57,10 @@ struct EQ::Net::ConsoleLoginStatus CheckLogin(const std::string &username, const
 		return ret;
 	}
 
-	char account_name[64];
-	database.GetAccountName(ret.account_id, account_name);
+	const std::string& account_name = database.GetAccountName(ret.account_id);
 
 	ret.account_name = account_name;
-	ret.status       = database.CheckStatus(ret.account_id);
+	ret.status       = database.GetAccountStatus(ret.account_id);
 	return ret;
 }
 
@@ -578,25 +577,25 @@ void ConsoleZoneShutdown(
 		strcpy(&tmpname[1], connection->UserName().c_str());
 
 		auto pack = new ServerPacket;
-		pack->size    = sizeof(ServerZoneStateChange_struct);
+		pack->size    = sizeof(ServerZoneStateChange_Struct);
 		pack->pBuffer = new uchar[pack->size];
-		memset(pack->pBuffer, 0, sizeof(ServerZoneStateChange_struct));
-		ServerZoneStateChange_struct *s = (ServerZoneStateChange_struct *) pack->pBuffer;
+		memset(pack->pBuffer, 0, sizeof(ServerZoneStateChange_Struct));
+		auto *s = (ServerZoneStateChange_Struct *) pack->pBuffer;
 		pack->opcode = ServerOP_ZoneShutdown;
-		strcpy(s->adminname, tmpname);
+		strcpy(s->admin_name, tmpname);
 		if (Strings::IsNumber(args[0])) {
-			s->ZoneServerID = Strings::ToInt(args[0]);
+			s->zone_server_id = Strings::ToInt(args[0]);
 		}
 		else {
-			s->zoneid = ZoneID(args[0].c_str());
+			s->zone_id = ZoneID(args[0].c_str());
 		}
 
 		ZoneServer *zs = 0;
-		if (s->ZoneServerID != 0) {
-			zs = zoneserver_list.FindByID(s->ZoneServerID);
+		if (s->zone_server_id != 0) {
+			zs = zoneserver_list.FindByID(s->zone_server_id);
 		}
-		else if (s->zoneid != 0) {
-			zs = zoneserver_list.FindByName(ZoneName(s->zoneid));
+		else if (s->zone_id != 0) {
+			zs = zoneserver_list.FindByName(ZoneName(s->zone_id));
 		}
 		else {
 			connection->SendLine("Error: ZoneShutdown: neither ID nor name specified");
@@ -919,6 +918,8 @@ void ConsoleReloadWorld(
 	safe_delete(pack);
 }
 
+auto debounce_reload = std::chrono::system_clock::now();
+
 /**
  * @param connection
  * @param command
@@ -934,6 +935,14 @@ void ConsoleReloadZoneQuests(
 		connection->SendLine("[zone_short_name] required as argument");
 		return;
 	}
+
+	// if now is within 1 second, return
+	if (std::chrono::system_clock::now() - debounce_reload < std::chrono::seconds(1)) {
+		debounce_reload = std::chrono::system_clock::now();
+		return;
+	}
+
+	debounce_reload = std::chrono::system_clock::now();
 
 	std::string zone_short_name = args[0];
 
@@ -1226,15 +1235,20 @@ void ConsoleCrossZoneMove(
 	}
 
 	auto pack = new ServerPacket(ServerOP_CZMove, sizeof(CZMove_Struct));
-	auto* CZM = (CZMove_Struct*) pack->pBuffer;
+	auto m = (CZMove_Struct*) pack->pBuffer;
 
-	CZM->update_type       = update_type;
-	CZM->update_subtype    = !instance_id ? CZMoveUpdateSubtype_MoveZone : CZMoveUpdateSubtype_MoveZoneInstance;
-	CZM->update_identifier = update_identifier;
-	CZM->instance_id       = instance_id;
+	if (!name.empty()) {
+		m->client_name = name;
+	}
 
-	strn0cpy(CZM->zone_short_name, zone_short_name.c_str(), sizeof(CZM->zone_short_name));
-	strn0cpy(CZM->client_name, name.c_str(), sizeof(CZM->client_name));
+	m->instance_id       = instance_id;
+	m->update_identifier = update_identifier;
+	m->update_type       = update_type;
+	m->update_subtype    = !instance_id ? CZMoveUpdateSubtype_MoveZone : CZMoveUpdateSubtype_MoveZoneInstance;
+
+	if (!zone_short_name.empty()) {
+		m->zone_short_name = zone_short_name;
+	}
 
 	zoneserver_list.SendPacket(pack);
 	safe_delete(pack);

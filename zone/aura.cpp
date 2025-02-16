@@ -1,4 +1,5 @@
 #include "../common/strings.h"
+#include "../common/repositories/auras_repository.h"
 
 #include "aura.h"
 #include "client.h"
@@ -71,7 +72,7 @@ Mob *Aura::GetOwner()
 // not 100% sure how this one should work and PVP affects ...
 void Aura::ProcessOnAllFriendlies(Mob *owner)
 {
-	auto          &mob_list = entity_list.GetCloseMobList(this, distance);
+	auto          &mob_list = GetCloseMobList(distance);
 	std::set<int> delayed_remove;
 	bool          is_buff   = IsBuffSpell(spell_id); // non-buff spells don't cast on enter
 
@@ -126,7 +127,7 @@ void Aura::ProcessOnAllFriendlies(Mob *owner)
 
 void Aura::ProcessOnAllGroupMembers(Mob *owner)
 {
-	auto          &mob_list = entity_list.GetCloseMobList(this, distance);
+	auto          &mob_list = GetCloseMobList(distance);
 	std::set<int> delayed_remove;
 	bool          is_buff   = IsBuffSpell(spell_id); // non-buff spells don't cast on enter
 
@@ -368,7 +369,7 @@ void Aura::ProcessOnAllGroupMembers(Mob *owner)
 
 void Aura::ProcessOnGroupMembersPets(Mob *owner)
 {
-	auto          &mob_list    = entity_list.GetCloseMobList(this,distance);
+	auto          &mob_list    = GetCloseMobList(distance);
 	std::set<int> delayed_remove;
 	bool          is_buff      = IsBuffSpell(spell_id); // non-buff spells don't cast on enter
 	// This type can either live on the pet (level 55/70 MAG aura) or on the pet owner (level 85 MAG aura)
@@ -575,7 +576,7 @@ void Aura::ProcessOnGroupMembersPets(Mob *owner)
 
 void Aura::ProcessTotem(Mob *owner)
 {
-	auto          &mob_list = entity_list.GetCloseMobList(this, distance);
+	auto          &mob_list = GetCloseMobList(distance);
 	std::set<int> delayed_remove;
 	bool          is_buff   = IsBuffSpell(spell_id); // non-buff spells don't cast on enter
 
@@ -633,9 +634,7 @@ void Aura::ProcessTotem(Mob *owner)
 
 void Aura::ProcessEnterTrap(Mob *owner)
 {
-	auto &mob_list = entity_list.GetCloseMobList(this, distance);
-
-	for (auto &e : mob_list) {
+	for (auto &e : GetCloseMobList(distance)) {
 		auto mob = e.second;
 		if (!mob) {
 			continue;
@@ -655,9 +654,7 @@ void Aura::ProcessEnterTrap(Mob *owner)
 
 void Aura::ProcessExitTrap(Mob *owner)
 {
-	auto &mob_list = entity_list.GetCloseMobList(this, distance);
-
-	for (auto &e : mob_list) {
+	for (auto &e : GetCloseMobList(distance)) {
 		auto mob = e.second;
 		if (!mob) {
 			continue;
@@ -688,8 +685,7 @@ void Aura::ProcessExitTrap(Mob *owner)
 // and hard to reason about
 void Aura::ProcessSpawns()
 {
-	const auto &clients = entity_list.GetCloseMobList(this, distance);
-	for (auto  &e : clients) {
+	for (auto &e: GetCloseMobList(distance)) {
 		if (!e.second) {
 			continue;
 		}
@@ -927,36 +923,33 @@ void Mob::MakeAura(uint16 spell_id)
 	}
 }
 
-bool ZoneDatabase::GetAuraEntry(uint16 spell_id, AuraRecord &record)
+bool ZoneDatabase::GetAuraEntry(uint16 spell_id, AuraRecord& r)
 {
-	auto query = StringFormat(
-		"SELECT npc_type, name, spell_id, distance, aura_type, spawn_type, movement, "
-		"duration, icon, cast_time FROM auras WHERE type='%d'",
-		spell_id
+	const auto& l = AurasRepository::GetWhere(
+		*this,
+		fmt::format(
+			"`type` = {}",
+			spell_id
+		)
 	);
 
-	auto results = QueryDatabase(query);
-	if (!results.Success()) {
+	if (l.empty()) {
 		return false;
 	}
 
-	if (results.RowCount() != 1) {
-		return false;
-	}
+	auto& e = l.front();
 
-	auto row = results.begin();
+	strn0cpy(r.name, e.name.c_str(), sizeof(r.name));
 
-	record.npc_type = Strings::ToInt(row[0]);
-	strn0cpy(record.name, row[1], 64);
-	record.spell_id   = Strings::ToInt(row[2]);
-	record.distance   = Strings::ToInt(row[3]);
-	record.distance *= record.distance; // so we can avoid sqrt
-	record.aura_type  = Strings::ToInt(row[4]);
-	record.spawn_type = Strings::ToInt(row[5]);
-	record.movement   = Strings::ToInt(row[6]);
-	record.duration   = Strings::ToInt(row[7]) * 1000; // DB is in seconds
-	record.icon       = Strings::ToInt(row[8]);
-	record.cast_time  = Strings::ToInt(row[9]) * 1000; // DB is in seconds
+	r.npc_type   = e.npc_type;
+	r.spell_id   = e.spell_id;
+	r.distance   = e.distance * e.distance;
+	r.aura_type  = e.aura_type;
+	r.spawn_type = e.spawn_type;
+	r.movement   = e.movement;
+	r.duration   = e.duration * 1000; // Database is in seconds
+	r.icon       = e.icon;
+	r.cast_time  = e.cast_time * 1000; // Database is in seconds
 
 	return true;
 }

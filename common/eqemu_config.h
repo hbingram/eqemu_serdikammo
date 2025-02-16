@@ -62,14 +62,6 @@ class EQEmuConfig
 		std::string SharedKey;
 		bool DisableConfigChecks;
 
-		// From <chatserver/>
-		std::string ChatHost;
-		uint16 ChatPort;
-
-		// From <mailserver/>
-		std::string MailHost;
-		uint16 MailPort;
-
 		// From <database/>
 		std::string DatabaseHost;
 		std::string DatabaseUsername;
@@ -103,6 +95,7 @@ class EQEmuConfig
 		std::string PluginDir;
 		std::string LuaModuleDir;
 		std::string PatchDir;
+		std::string OpcodeDir;
 		std::string SharedMemDir;
 		std::string LogDir;
 
@@ -122,11 +115,17 @@ class EQEmuConfig
 
 		bool auto_database_updates;
 
+		const std::string &GetUCSHost() const;
+		uint16 GetUCSPort() const;
+
 //	uint16 DynamicCount;
 
 //	map<string,uint16> StaticZones;
 
 	protected:
+
+		std::string m_ucs_host;
+		uint16      m_ucs_port;
 
 		static EQEmuConfig *_config;
 		Json::Value _root;
@@ -186,6 +185,7 @@ class EQEmuConfig
 		}
 
 		void Dump() const;
+		void CheckUcsConfigConversion();
 };
 
 #endif

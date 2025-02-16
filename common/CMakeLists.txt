@@ -2,6 +2,8 @@ CMAKE_MINIMUM_REQUIRED(VERSION 3.12)
 
 SET(common_sources
     base_packet.cpp
+    bazaar.cpp
+    bodytypes.cpp
     classes.cpp
     cli/eqemu_command_handler.cpp
     compression.cpp
@@ -13,7 +15,6 @@ SET(common_sources
     crc32.cpp
     database/database_dump_service.cpp
     database.cpp
-    database_conversions.cpp
     database_instances.cpp
     database/database_update_manifest.cpp
     database/database_update_manifest_bots.cpp
@@ -61,6 +62,7 @@ SET(common_sources
     mutex.cpp
     mysql_request_result.cpp
     mysql_request_row.cpp
+    mysql_stmt.cpp
     opcode_map.cpp
     opcodemgr.cpp
     packet_dump.cpp
@@ -70,6 +72,7 @@ SET(common_sources
     perl_eqdb.cpp
     perl_eqdb_res.cpp
     process/process.cpp
+    process.cpp
     proc_launcher.cpp
     profanity_manager.cpp
     ptimer.cpp
@@ -83,6 +86,7 @@ SET(common_sources
     shared_tasks.cpp
     shareddb.cpp
     skills.cpp
+    skill_caps.cpp
     spdat.cpp
     strings.cpp
     struct_strategy.cpp
@@ -90,6 +94,7 @@ SET(common_sources
     timer.cpp
     unix.cpp
     platform.cpp
+    json/json.hpp
     json/jsoncpp.cpp
     zone_store.cpp
     net/console_server.cpp
@@ -154,6 +159,7 @@ SET(repositories
     repositories/base/base_bugs_repository.h
     repositories/base/base_bug_reports_repository.h
     repositories/base/base_buyer_repository.h
+    repositories/base/base_buyer_trade_items_repository.h
     repositories/base/base_character_activities_repository.h
     repositories/base/base_character_alternate_abilities_repository.h
     repositories/base/base_character_alt_currency_repository.h
@@ -175,6 +181,8 @@ SET(repositories
     repositories/base/base_character_leadership_abilities_repository.h
     repositories/base/base_character_material_repository.h
     repositories/base/base_character_memmed_spells_repository.h
+    repositories/base/base_character_parcels_repository.h
+    repositories/base/base_character_parcels_containers_repository.h
     repositories/base/base_character_peqzone_flags_repository.h
     repositories/base/base_character_pet_buffs_repository.h
     repositories/base/base_character_pet_info_repository.h
@@ -221,6 +229,9 @@ SET(repositories
     repositories/base/base_group_leaders_repository.h
     repositories/base/base_guilds_repository.h
     repositories/base/base_guild_ranks_repository.h
+    repositories/base/base_guild_permissions_repository.h
+    repositories/base/base_guild_members_repository.h
+    repositories/base/base_guild_bank_repository.h
     repositories/base/base_guild_relations_repository.h
     repositories/base/base_horses_repository.h
     repositories/base/base_instance_list_repository.h
@@ -229,7 +240,6 @@ SET(repositories
     repositories/base/base_inventory_snapshots_repository.h
     repositories/base/base_ip_exemptions_repository.h
     repositories/base/base_items_repository.h
-    repositories/base/base_item_tick_repository.h
     repositories/base/base_ldon_trap_entries_repository.h
     repositories/base/base_ldon_trap_templates_repository.h
     repositories/base/base_level_exp_mods_repository.h
@@ -331,7 +341,8 @@ SET(repositories
     repositories/books_repository.h
     repositories/bugs_repository.h
     repositories/bug_reports_repository.h
-    repositories/buyer_repository.h
+    repositories/buyer_buy_lines_repository.h
+    repositories/buyer_trade_items_repository.h
     repositories/character_activities_repository.h
     repositories/character_alternate_abilities_repository.h
     repositories/character_alt_currency_repository.h
@@ -353,6 +364,8 @@ SET(repositories
     repositories/character_leadership_abilities_repository.h
     repositories/character_material_repository.h
     repositories/character_memmed_spells_repository.h
+    repositories/character_parcels_repository.h
+    repositories/character_parcels_containers_repository.h
     repositories/character_peqzone_flags_repository.h
     repositories/character_pet_buffs_repository.h
     repositories/character_pet_info_repository.h
@@ -399,6 +412,9 @@ SET(repositories
     repositories/group_leaders_repository.h
     repositories/guilds_repository.h
     repositories/guild_ranks_repository.h
+    repositories/guild_permissions_repository.h
+    repositories/guild_members_repository.h
+    repositories/guild_bank_repository.h
     repositories/guild_relations_repository.h
     repositories/horses_repository.h
     repositories/instance_list_repository.h
@@ -407,7 +423,6 @@ SET(repositories
     repositories/inventory_snapshots_repository.h
     repositories/ip_exemptions_repository.h
     repositories/items_repository.h
-    repositories/item_tick_repository.h
     repositories/ldon_trap_entries_repository.h
     repositories/ldon_trap_templates_repository.h
     repositories/level_exp_mods_repository.h
@@ -487,12 +502,12 @@ SET(repositories
     repositories/zone_repository.h
     repositories/zone_points_repository.h
 
-    )
+)
 
 SET(common_headers
     additive_lagged_fibonacci_engine.h
+    bazaar.h
     base_packet.h
-    base_data.h
     bodytypes.h
     classes.h
     compression.h
@@ -539,7 +554,6 @@ SET(common_headers
     events/player_event_logs.h
     events/player_event_discord_formatter.h
     events/player_events.h
-    errmsg.h
     event_sub.h
     expedition_lockout_timer.h
     extprofile.h
@@ -561,10 +575,9 @@ SET(common_headers
     item_fieldlist.h
     item_instance.h
     json_config.h
-    languages.h
     light_source.h
     linked_list.h
-    loottable.h
+    loot.h
     mail_oplist.h
     md5.h
     memory_buffer.h
@@ -574,6 +587,7 @@ SET(common_headers
     mutex.h
     mysql_request_result.h
     mysql_request_row.h
+    mysql_stmt.h
     op_codes.h
     opcode_dispatch.h
     opcodemgr.h
@@ -583,12 +597,14 @@ SET(common_headers
     path_manager.cpp
     platform.h
     process/process.h
+    process.h
     proc_launcher.h
     profanity_manager.h
     profiler.h
     ptimer.h
     queue.h
     races.h
+    raid.h
     random.h
     rdtsc.h
     rulesys.h
@@ -602,6 +618,7 @@ SET(common_headers
     shared_tasks.h
     shareddb.h
     skills.h
+    skill_caps.h
     spdat.h
     strings.h
     struct_strategy.h
@@ -677,13 +694,13 @@ SOURCE_GROUP(Event FILES
     event/event_loop.h
     event/timer.h
     event/task.h
-    )
+)
 
 SOURCE_GROUP(Json FILES
     json/json.h
     json/jsoncpp.cpp
     json/json-forwards.h
-    )
+)
 
 SOURCE_GROUP(Net FILES
     net/console_server.cpp
@@ -720,7 +737,7 @@ SOURCE_GROUP(Net FILES
     net/websocket_server.h
     net/websocket_server_connection.cpp
     net/websocket_server_connection.h
-    )
+)
 
 SOURCE_GROUP(Patches FILES
     patches/patches.h
@@ -764,12 +781,12 @@ SOURCE_GROUP(Patches FILES
     patches/titanium_limits.cpp
     patches/uf.cpp
     patches/uf_limits.cpp
-    )
+)
 
 SOURCE_GROUP(StackWalker FILES
     StackWalker/StackWalker.h
     StackWalker/StackWalker.cpp
-    )
+)
 
 SOURCE_GROUP(Util FILES
     util/memory_stream.h
@@ -777,7 +794,7 @@ SOURCE_GROUP(Util FILES
     util/directory.h
     util/uuid.cpp
     util/uuid.h
-    )
+)
 
 INCLUDE_DIRECTORIES(Patches SocketLib StackWalker)
 
@@ -788,5 +805,8 @@ IF (UNIX)
     SET_SOURCE_FILES_PROPERTIES("patches/sod.cpp" "patches/sof.cpp" "patches/rof.cpp" "patches/rof2.cpp" "patches/uf.cpp" PROPERTIES COMPILE_FLAGS -O0)
 ENDIF (UNIX)
 
+IF (WIN32 AND EQEMU_BUILD_PCH)
+    TARGET_PRECOMPILE_HEADERS(common PRIVATE pch/pch.h)
+ENDIF ()
 
 SET(LIBRARY_OUTPUT_PATH ${PROJECT_BINARY_DIR}/bin)

@@ -45,6 +45,7 @@
 #include "../common/misc.h"
 #include "client.h"
 #include "worlddb.h"
+#include "wguild_mgr.h"
 
 #ifdef _WINDOWS
 #include <process.h>
@@ -85,8 +86,10 @@
 #include "world_boot.h"
 #include "../common/path_manager.h"
 #include "../common/events/player_event_logs.h"
+#include "../common/skill_caps.h"
+#include "../common/repositories/character_parcels_repository.h"
 
-
+SkillCaps           skill_caps;
 ZoneStore           zone_store;
 ClientList          client_list;
 GroupLFPList        LFPGroupList;
@@ -142,8 +145,6 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
-	WorldBoot::CheckForXMLConfigUpgrade();
-
 	Config = WorldConfig::get();
 
 	LogInfo("CURRENT_VERSION [{}]", CURRENT_VERSION);
@@ -176,6 +177,9 @@ int main(int argc, char **argv)
 	PurgeInstanceTimer.Start(450000);
 	Timer EQTimeTimer(600000);
 	EQTimeTimer.Start(600000);
+	Timer parcel_prune_timer(86400000);
+	parcel_prune_timer.Start(86400000);
+
 
 	// global loads
 	LogInfo("Loading launcher list");
@@ -188,6 +192,13 @@ int main(int argc, char **argv)
 		console = std::make_unique<EQ::Net::ConsoleServer>(Config->TelnetIP, Config->TelnetTCPPort);
 		RegisterConsoleFunctions(console);
 	}
+
+	content_service.SetDatabase(&database)
+		->SetContentDatabase(&content_db)
+		->SetExpansionContext()
+		->ReloadContentFlags();
+
+	skill_caps.SetContentDatabase(&content_db)->LoadSkillCaps();
 
 	std::unique_ptr<EQ::Net::ServertalkServer> server_connection;
 	server_connection = std::make_unique<EQ::Net::ServertalkServer>();
@@ -411,6 +422,21 @@ int main(int argc, char **argv)
 		event_scheduler.Process(&zoneserver_list);
 
 		client_list.Process();
+		guild_mgr.Process();
+
+		if (parcel_prune_timer.Check()) {
+			if (RuleB(Parcel, EnableParcelMerchants) && RuleB(Parcel, EnablePruning)) {
+				LogTrading(
+					"Parcel Prune process running for parcels over <red>[{}] days",
+					RuleI(Parcel, ParcelPruneDelay)
+				);
+
+				auto out = std::make_unique<ServerPacket>(ServerOP_ParcelPrune);
+				zoneserver_list.SendPacketToBootedZones(out.get());
+
+				database.PurgeCharacterParcels();
+			}
+		}
 
 		if (player_event_process_timer.Check()) {
 			player_event_logs.Process();
@@ -424,12 +450,20 @@ int main(int argc, char **argv)
 		}
 
 		if (EQTimeTimer.Check()) {
-			TimeOfDay_Struct tod;
-			zoneserver_list.worldclock.GetCurrentEQTimeOfDay(time(0), &tod);
-			if (!database.SaveTime(tod.minute, tod.hour, tod.day, tod.month, tod.year))
-				LogError("Failed to save eqtime");
-			else
-				LogDebug("EQTime successfully saved");
+			TimeOfDay_Struct tod{};
+			zoneserver_list.worldclock.GetCurrentEQTimeOfDay(time(nullptr), &tod);
+			if (!database.SaveTime(tod.minute, tod.hour, tod.day, tod.month, tod.year)) {
+				LogEqTime("Failed to save eqtime");
+			}
+			else {
+				LogEqTimeDetail("EQTime successfully saved - time is now year [{}] month [{}] day [{}] hour [{}] minute [{}]",
+					tod.year,
+					tod.month,
+					tod.day,
+					tod.hour - 1,
+					tod.minute
+				);
+			}
 		}
 
 		zoneserver_list.Process();

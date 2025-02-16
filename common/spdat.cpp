@@ -431,6 +431,16 @@ bool IsCharmSpell(uint16 spell_id)
 	return IsEffectInSpell(spell_id, SE_Charm);
 }
 
+bool IsResurrectionSicknessSpell(uint16 spell_id) {
+	return (
+		spell_id == SPELL_RESURRECTION_SICKNESS ||
+		spell_id == SPELL_RESURRECTION_SICKNESS2 ||
+		spell_id == SPELL_RESURRECTION_SICKNESS3 ||
+		spell_id == SPELL_RESURRECTION_SICKNESS4 ||
+		spell_id == SPELL_REVIVAL_SICKNESS
+	);
+}
+
 bool IsBlindSpell(uint16 spell_id)
 {
 	return IsEffectInSpell(spell_id, SE_Blind);
@@ -666,7 +676,7 @@ bool IsBardSong(uint16 spell_id)
 	const auto& spell = spells[spell_id];
 
 	if (
-		spell.classes[BARD - 1] < UINT8_MAX &&
+		spell.classes[Class::Bard - 1] < UINT8_MAX &&
 		!spell.is_discipline
 	) {
 		return true;
@@ -769,6 +779,13 @@ bool IsValidSpell(uint32 spell_id)
 	return false;
 }
 
+bool IsHarmTouchSpell(uint16 spell_id)
+{
+	return spell_id == SPELL_HARM_TOUCH ||
+		   spell_id == SPELL_HARM_TOUCH2 ||
+		   spell_id == SPELL_IMP_HARM_TOUCH;
+}
+
 // returns the lowest level of any caster which can use the spell
 uint8 GetSpellMinimumLevel(uint16 spell_id)
 {
@@ -780,7 +797,7 @@ uint8 GetSpellMinimumLevel(uint16 spell_id)
 
 	const auto& spell = spells[spell_id];
 
-	for (int i = 0; i < PLAYER_CLASS_COUNT; i++) {
+	for (int i = 0; i < Class::PLAYER_CLASS_COUNT; i++) {
 		if (spell.classes[i] < minimum_level) {
 			minimum_level = spell.classes[i];
 		}
@@ -798,7 +815,7 @@ uint8 GetSpellLevel(uint16 spell_id, uint8 class_id)
 		return UINT8_MAX;
 	}
 
-	if (class_id >= PLAYER_CLASS_COUNT) {
+	if (class_id >= Class::PLAYER_CLASS_COUNT) {
 		return UINT8_MAX;
 	}
 
@@ -2307,4 +2324,109 @@ bool IsCastNotStandingSpell(uint16 spell_id) {
 		This field also allows for damage to ignore DA immunity.
 	*/
 	return spells[spell_id].cast_not_standing;
+}
+
+bool IsAegolismSpell(uint16 spell_id) {
+
+	if (!IsValidSpell(spell_id)) {
+		return 0;
+	}
+
+	bool has_max_hp = false;
+	bool has_current_hp = false;
+	bool has_ac = false;
+
+	for (int i = 0; i < EFFECT_COUNT; ++i) {
+
+		if (i == 0 && spells[spell_id].effect_id[i] != SE_StackingCommand_Block) {
+			return 0;
+		}
+
+		if (i == 1 && spells[spell_id].effect_id[i] == SE_TotalHP) {
+			has_max_hp = true;
+		}
+
+		if (i == 2 && spells[spell_id].effect_id[i] == SE_CurrentHPOnce) {
+			has_current_hp = true;
+		}
+
+		if (i == 3 && spells[spell_id].effect_id[i] == SE_ArmorClass) {
+			has_ac = true;
+		}
+
+		if (i == 4 && spells[spell_id].effect_id[i] != SE_StackingCommand_Overwrite) {
+			return 0;
+		}
+	}
+
+	if (has_max_hp && has_current_hp && has_ac) {
+		return 1;
+	}
+	return 0;
+}
+
+
+bool AegolismStackingIsSymbolSpell(uint16 spell_id) {
+	
+	/*
+		This is hardcoded to be specific to the type of HP buffs that are removed if a mob has an Aegolism buff.
+	*/
+
+	if (!IsValidSpell(spell_id)) {
+		return 0;
+	}
+
+	bool has_max_hp = false;
+	bool has_current_hp = false;
+
+	for (int i = 0; i < EFFECT_COUNT; ++i) {
+
+		if ((i < 2 && spells[spell_id].effect_id[i] != SE_CHA) ||
+			i > 3 && spells[spell_id].effect_id[i] != SE_Blank) {
+			return 0;;
+		}
+
+		if (i == 2 && spells[spell_id].effect_id[i] == SE_TotalHP) {
+			has_max_hp = true;
+		}
+
+		if (i == 3 && spells[spell_id].effect_id[i] == SE_CurrentHPOnce) {
+			has_current_hp = true;
+		}
+	}
+
+	if (has_max_hp && has_current_hp) {
+		return 1;
+	}
+
+	return 0;
+}
+
+bool AegolismStackingIsArmorClassSpell(uint16 spell_id) {
+	/*
+		This is hardcoded to be specific to the type of AC buffs that are removed if a mob has an Aegolism buff.
+	*/
+	if (!IsValidSpell(spell_id)) {
+		return 0;
+	}
+
+	bool has_ac = false;
+
+	for (int i = 0; i < EFFECT_COUNT; ++i) {
+
+		if ((i < 3 && spells[spell_id].effect_id[i] != SE_CHA) ||
+			i > 3 && spells[spell_id].effect_id[i] != SE_Blank) {
+			return 0;
+		}
+
+		if (i == 3 && spells[spell_id].effect_id[i] == SE_ArmorClass) {
+			has_ac = true;
+		}
+	}
+
+	if (has_ac) {
+		return 1;
+	}
+
+	return 0;
 }

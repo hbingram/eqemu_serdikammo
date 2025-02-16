@@ -25,6 +25,7 @@
 #include "zonedb.h"
 #include "../common/events/player_event_logs.h"
 #include "bot.h"
+#include "../common/repositories/character_corpse_items_repository.h"
 
 extern WorldServer worldserver;
 
@@ -383,7 +384,7 @@ bool Client::SummonItem(uint32 item_id, int16 charges, uint32 aug1, uint32 aug2,
 					return false;
 				}
 
-				if(item->AugSlotVisible[iter] == 0) {
+				if (!RuleB(Items, SummonItemAllowInvisibleAugments) && item->AugSlotVisible[iter] == 0) {
 					Message(
 						Chat::Red,
 						fmt::format(
@@ -1184,7 +1185,7 @@ bool Client::PutItemInInventory(int16 slot_id, const EQ::ItemInstance& inst, boo
 	// a lot of wasted checks and calls coded above...
 }
 
-void Client::PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, ServerLootItem_Struct** bag_item_data)
+void Client::PutLootInInventory(int16 slot_id, const EQ::ItemInstance &inst, LootItem** bag_item_data)
 {
 	LogInventory("Putting loot item [{}] ([{}]) into slot [{}]", inst.GetItem()->Name, inst.GetItem()->ID, slot_id);
 
@@ -1296,7 +1297,7 @@ bool Client::TryStacking(EQ::ItemInstance* item, uint8 type, bool try_worn, bool
 // Locate an available space in inventory to place an item
 // and then put the item there
 // The change will be saved to the database
-bool Client::AutoPutLootInInventory(EQ::ItemInstance& inst, bool try_worn, bool try_cursor, ServerLootItem_Struct** bag_item_data)
+bool Client::AutoPutLootInInventory(EQ::ItemInstance& inst, bool try_worn, bool try_cursor, LootItem** bag_item_data)
 {
 	// #1: Try to auto equip
 	if (try_worn && inst.IsEquipable(GetBaseRace(), GetClass()) && inst.GetItem()->ReqLevel <= level && (!inst.GetItem()->Attuneable || inst.IsAttuned()) && inst.GetItem()->ItemType != EQ::item::ItemTypeAugmentation) {
@@ -1673,6 +1674,7 @@ bool Client::IsValidSlot(uint32 slot) {
 		(slot == (uint32)EQ::invslot::slotCursor) ||
 		(slot <= EQ::invbag::CURSOR_BAG_END && slot >= EQ::invbag::CURSOR_BAG_BEGIN) ||
 		(slot <= EQ::invslot::TRIBUTE_END && slot >= EQ::invslot::TRIBUTE_BEGIN) ||
+		(slot <= EQ::invslot::GUILD_TRIBUTE_END && slot >= EQ::invslot::GUILD_TRIBUTE_BEGIN) ||
 		(slot <= EQ::invslot::SHARED_BANK_END && slot >= EQ::invslot::SHARED_BANK_BEGIN) ||
 		(slot <= EQ::invbag::SHARED_BANK_BAGS_END && slot >= EQ::invbag::SHARED_BANK_BAGS_BEGIN) ||
 		(slot <= EQ::invslot::TRADE_END && slot >= EQ::invslot::TRADE_BEGIN) ||
@@ -1862,19 +1864,23 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 		LogInventory("Dest slot [{}] has item [{}] ([{}]) with [{}] charges in it", dst_slot_id, dst_inst->GetItem()->Name, dst_inst->GetItem()->ID, dst_inst->GetCharges());
 		dstitemid = dst_inst->GetItem()->ID;
 	}
-	if (Trader && srcitemid>0){
+	if (IsBuyer() && srcitemid > 0) {
+		CheckIfMovedItemIsPartOfBuyLines(srcitemid);
+	}
+
+	if (IsTrader() && srcitemid>0){
 		EQ::ItemInstance* srcbag;
 		EQ::ItemInstance* dstbag;
 		uint32 srcbagid =0;
 		uint32 dstbagid = 0;
 
 		if (src_slot_id >= EQ::invbag::GENERAL_BAGS_BEGIN && src_slot_id <= EQ::invbag::GENERAL_BAGS_END) {
-			srcbag = m_inv.GetItem(((int)(src_slot_id / 10)) - 3);
+			srcbag = m_inv.GetItem(EQ::InventoryProfile::CalcSlotId(src_slot_id));
 			if (srcbag)
 				srcbagid = srcbag->GetItem()->ID;
 		}
 		if (dst_slot_id >= EQ::invbag::GENERAL_BAGS_BEGIN && dst_slot_id <= EQ::invbag::GENERAL_BAGS_END) {
-			dstbag = m_inv.GetItem(((int)(dst_slot_id / 10)) - 3);
+			dstbag = m_inv.GetItem(EQ::InventoryProfile::CalcSlotId(dst_slot_id));
 			if (dstbag)
 				dstbagid = dstbag->GetItem()->ID;
 		}
@@ -1882,7 +1888,7 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 		    (dstbagid && dstbag->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) ||
 		    (srcitemid && src_inst && src_inst->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) ||
 		    (dstitemid && dst_inst && dst_inst->GetItem()->BagType == EQ::item::BagTypeTradersSatchel)) {
-			Trader_EndTrader();
+			TraderEndTrader();
 			Message(Chat::Red,"You cannot move your Trader Satchels, or items inside them, while Trading.");
 		}
 	}
@@ -2196,6 +2202,27 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 		}
 
 		LogInventory("Moving entire item from slot [{}] to slot [{}]", src_slot_id, dst_slot_id);
+		if (src_inst->IsStackable() &&
+			dst_slot_id >= EQ::invbag::GENERAL_BAGS_BEGIN &&
+			dst_slot_id <= EQ::invbag::GENERAL_BAGS_END
+			)	{
+			EQ::ItemInstance *bag = nullptr;
+			bag = m_inv.GetItem(EQ::InventoryProfile::CalcSlotId(dst_slot_id));
+			if (bag) {
+				if (bag->GetItem()->BagType == EQ::item::BagTypeTradersSatchel) {
+					PutItemInInventory(dst_slot_id, *src_inst, true);
+					//This resets the UF client to recognize the new serial item of the placed item
+					//if it came from a stack without having to close the trader window and re-open.
+					//It is not required for the RoF2 client.
+					if (ClientVersion() < EQ::versions::ClientVersion::RoF2) {
+						auto outapp  = new EQApplicationPacket(OP_Trader, sizeof(TraderBuy_Struct));
+						auto data    = (TraderBuy_Struct *) outapp->pBuffer;
+						data->action = BazaarBuyItem;
+						FastQueuePacket(&outapp);
+					}
+				}
+			}
+		}
 
 		if (src_slot_id <= EQ::invslot::EQUIPMENT_END) {
 			if(src_inst) {
@@ -2274,10 +2301,13 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 	if (dst_slot_id <= EQ::invslot::EQUIPMENT_END) {// on Titanium and ROF2 /showhelm works even if sending helm slot
 		SendWearChange(matslot);
 	}
-	// This is part of a bug fix to ensure heroforge graphics display to other clients in zone.
-	if (queue_wearchange_slot >= 0) {
-		heroforge_wearchange_timer.Start(100);
+	/* BRYANT120724-START-: send WearChange when removing equipment entirely */
+	matslot = SlotConvert2(src_slot_id);
+	if ((src_slot_id <= EQ::invslot::EQUIPMENT_END) && dst_inst == nullptr)
+	{
+		SendWearChange(matslot);
 	}
+	/* BRYANT120724-END- */
 
 	// Step 7: Save change to the database
 	if (src_slot_id == EQ::invslot::slotCursor) {
@@ -3426,6 +3456,11 @@ void Client::SetBandolier(const EQApplicationPacket *app)
 			}
 		}
 	}
+
+	if (RuleI(Character, BandolierSwapDelay) > 0) {
+		bandolier_throttle_timer.Start(RuleI(Character, BandolierSwapDelay));
+	}
+
 	// finally, recalculate any stat bonuses from the item change
 	CalcBonuses();
 }
@@ -3595,6 +3630,11 @@ bool Client::InterrogateInventory(Client* requester, bool log, bool silent, bool
 		if (inst == nullptr) { continue; }
 		instmap[index] = inst;
 	}
+	for (int16 index = EQ::invslot::GUILD_TRIBUTE_BEGIN; index <= EQ::invslot::GUILD_TRIBUTE_END; ++index) {
+		auto inst = m_inv[index];
+		if (inst == nullptr) { continue; }
+		instmap[index] = inst;
+	}
 	for (int16 index = EQ::invslot::BANK_BEGIN; index <= EQ::invslot::BANK_END; ++index) {
 		auto inst = m_inv[index];
 		if (inst == nullptr) { continue; }
@@ -3731,6 +3771,7 @@ bool Client::InterrogateInventory_error(int16 head, int16 index, const EQ::ItemI
 	if (
 		(head >= EQ::invslot::EQUIPMENT_BEGIN && head <= EQ::invslot::EQUIPMENT_END) ||
 		(head >= EQ::invslot::TRIBUTE_BEGIN && head <= EQ::invslot::TRIBUTE_END) ||
+		(head >= EQ::invslot::GUILD_TRIBUTE_BEGIN && head <= EQ::invslot::GUILD_TRIBUTE_END) ||
 		(head >= EQ::invslot::WORLD_BEGIN && head <= EQ::invslot::WORLD_END) ||
 		(head >= 8000 && head <= 8101)) {
 		switch (depth)
@@ -4757,3 +4798,149 @@ bool Client::IsAugmentRestricted(uint8 item_type, uint32 augment_restriction)
 
 	return false;
 }
+
+void Client::SummonItemIntoInventory(
+	uint32 item_id,
+	int16 charges,
+	uint32 aug1,
+	uint32 aug2,
+	uint32 aug3,
+	uint32 aug4,
+	uint32 aug5,
+	uint32 aug6,
+	bool is_attuned
+)
+{
+	auto *inst = database.CreateItem(
+		item_id,
+		charges,
+		aug1,
+		aug2,
+		aug3,
+		aug4,
+		aug5,
+		aug6,
+		is_attuned
+	);
+
+	if (!inst) {
+		return;
+	}
+
+	const bool  is_arrow = inst->GetItem()->ItemType == EQ::item::ItemTypeArrow;
+	const int16 slot_id  = m_inv.FindFreeSlot(
+		inst->IsClassBag(),
+		true,
+		inst->GetItem()->Size,
+		is_arrow
+	);
+
+	SummonItem(
+		item_id,
+		charges,
+		aug1,
+		aug2,
+		aug3,
+		aug4,
+		aug5,
+		aug6,
+		is_attuned,
+		slot_id
+	);
+}
+
+bool Client::HasItemOnCorpse(uint32 item_id)
+{
+	auto corpses = CharacterCorpsesRepository::GetWhere(database, fmt::format("charid = {}", CharacterID()));
+	if (corpses.empty()) {
+		return false;
+	}
+
+	std::vector<uint32> corpse_ids;
+	corpse_ids.reserve(corpses.size());
+
+	for (auto &corpse : corpses) {
+		corpse_ids.push_back(corpse.id);
+	}
+
+	auto items = CharacterCorpseItemsRepository::GetWhere(
+		database,
+		fmt::format(
+			"corpse_id IN ({})",
+			Strings::Join(corpse_ids, ",")
+		)
+	);
+
+	for (auto &item : items) {
+		if (item.item_id == item_id) {
+			return true;
+		}
+		if (item.aug_1 == item_id || item.aug_2 == item_id ||
+			item.aug_3 == item_id || item.aug_4 == item_id ||
+			item.aug_5 == item_id || item.aug_6 == item_id) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool Client::PutItemInInventoryWithStacking(EQ::ItemInstance *inst)
+{
+	auto free_id = GetInv().FindFirstFreeSlotThatFitsItem(inst->GetItem());
+	if (inst->IsStackable()) {
+		if (TryStacking(inst, ItemPacketTrade, true, false)) {
+			return true;
+		}
+	}
+	if (free_id != INVALID_INDEX) {
+		if (PutItemInInventory(free_id, *inst, true)) {
+			return true;
+		}
+	}
+	return false;
+};
+
+bool Client::FindNumberOfFreeInventorySlotsWithSizeCheck(std::vector<BuyerLineTradeItems_Struct> items)
+{
+	uint32 count = 0;
+	for (int16         i = EQ::invslot::GENERAL_BEGIN; i <= EQ::invslot::GENERAL_END; i++) {
+		if ((((uint64) 1 << i) & GetInv().GetLookup()->PossessionsBitmask) == 0) {
+			continue;
+		}
+
+		EQ::ItemInstance *inv_item = GetInv().GetItem(i);
+
+		if (!inv_item) {
+			// Found available slot in personal inventory.  Fits all sizes
+			count++;
+		}
+
+		if (count >= items.size()) {
+			return true;
+		}
+
+		if (inv_item->IsClassBag()) {
+			for (auto const& item:items) {
+				auto item_tmp = database.GetItem(item.item_id);
+				if (EQ::InventoryProfile::CanItemFitInContainer(item_tmp, inv_item->GetItem())) {
+					int16 base_slot_id = EQ::InventoryProfile::CalcSlotId(i, EQ::invbag::SLOT_BEGIN);
+					uint8 bag_size     = inv_item->GetItem()->BagSlots;
+
+					for (uint8 bag_slot = EQ::invbag::SLOT_BEGIN; bag_slot < bag_size; bag_slot++) {
+						auto bag_item = GetInv().GetItem(base_slot_id + bag_slot);
+						if (!bag_item) {
+							// Found a bag slot that fits the item
+							count++;
+						}
+					}
+
+					if (count >= items.size()) {
+						return true;
+					}
+				}
+			}
+		}
+	}
+	return false;
+};

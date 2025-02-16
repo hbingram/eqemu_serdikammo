@@ -3,7 +3,7 @@
 
 extern WorldServer worldserver;
 
-void command_motd(Client *c, const Seperator *sep)
+void SetMOTD(Client *c, const Seperator *sep)
 {
 	const auto arguments = sep->argnum;
 	if (arguments < 2) {
@@ -17,7 +17,7 @@ void command_motd(Client *c, const Seperator *sep)
 
 	auto m = (ServerMotd_Struct *) pack->pBuffer;
 	strn0cpy(m->myname, c->GetName(), sizeof(m->myname));
-	strn0cpy(m->motd, message.c_str(), sizeof(m->motd));
+	strn0cpy(m->motd, !message.empty() ? message.c_str() : "", sizeof(m->motd));
 
 	worldserver.SendPacket(pack);
 	safe_delete(pack);

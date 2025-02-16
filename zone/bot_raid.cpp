@@ -25,7 +25,7 @@
 #include "quest_parser_collection.h"
 #include "../common/data_verification.h"
 
-std::vector<RaidMember> Raid::GetRaidGroupMembers(uint32 gid) 
+std::vector<RaidMember> Raid::GetRaidGroupMembers(uint32 gid)
 {
 	std::vector<RaidMember> raid_group_members;
 	raid_group_members.clear();
@@ -98,7 +98,7 @@ void Raid::HandleBotGroupDisband(uint32 owner, uint32 gid)
 			auto r_group_members = GetRaidGroupMembers(GetGroup(b->GetName()));
 			auto g = new Group(b);
 			entity_list.AddGroup(g);
-			database.SetGroupID(b->GetCleanName(), g->GetID(), b->GetBotID());
+			g->AddToGroup(b);
 			database.SetGroupLeaderName(g->GetID(), b->GetName());
 
 			for (auto m: r_group_members) {
@@ -126,9 +126,9 @@ void Raid::HandleOfflineBots(uint32 owner) {
 	}
 
 	for (const auto& b: bots_list) {
-		if (IsRaidMember(b.Name)) {
+		if (IsRaidMember(b.bot_name)) {
 			for (const auto& m: members) {
-				if (m.is_bot && strcmp(m.member_name, b.Name) == 0) {
+				if (m.is_bot && strcmp(m.member_name, b.bot_name) == 0) {
 					uint32 gid = GetGroup(m.member_name);
 					SendRaidGroupRemove(m.member_name, gid);
 					RemoveMember(m.member_name);
@@ -312,10 +312,12 @@ void Client::SpawnRaidBotsOnConnect(Raid* raid) {
 	for (const auto& m: r_members) {
 		if (strlen(m.member_name) != 0) {
 
-			for (const auto& b: bots_list) {
-				if (strcmp(m.member_name, b.Name) == 0) {
+			for (const auto& b : bots_list) {
+				if (strcmp(m.member_name, b.bot_name) == 0) {
 					std::string buffer = "^spawn ";
 					buffer.append(m.member_name);
+					std::string silent = " silent";
+					buffer.append(silent);
 					bot_command_real_dispatch(this, buffer.c_str());
 					auto bot = entity_list.GetBotByBotName(m.member_name);
 

@@ -202,6 +202,20 @@
 #define SPELL_GUIDE_LEVITATION 39852
 #define SPELL_GUIDE_SPELL_HASTE 39853
 #define SPELL_GUIDE_HASTE 39854
+#define SPELL_VAMPIRIC_EMBRACE 821
+#define SPELL_VAMPIRIC_EMBRACE_OF_SHADOW 822
+#define SPELL_BATTLE_CRY 5027
+#define SPELL_WAR_CRY 5028
+#define SPELL_BATTLE_CRY_OF_DRAVEL 5029
+#define SPELL_WAR_CRY_OF_DRAVEL 5030
+#define SPELL_BATTLE_CRY_OF_THE_MASTRUQ 5031
+#define SPELL_ANCIENT_CRY_OF_CHAOS 5032
+#define SPELL_BLOODTHIRST 8476
+#define SPELL_AMPLIFICATION 2603
+#define SPELL_DIVINE_REZ 2738
+
+// discipline IDs.
+#define DISC_UNHOLY_AURA 4520
 
 //spellgroup ids
 #define SPELLGROUP_FRENZIED_BURNOUT 2754
@@ -890,7 +904,7 @@ typedef enum {
 #define SE_AlterNPCLevel				107	// implemented - not used on live
 #define SE_Familiar						108	// implemented
 #define SE_SummonItemIntoBag			109	// implemented - summons stuff into container
-//#define SE_IncreaseArchery			110	// not used
+#define SE_IncreaseArchery				110	// implemented
 #define SE_ResistAll					111	// implemented - Note: Physical Resists are not modified by this effect.
 #define SE_CastingLevel					112	// implemented
 #define	SE_SummonHorse					113	// implemented
@@ -902,7 +916,7 @@ typedef enum {
 #define SE_AttackSpeed3					119	// implemented
 #define SE_HealRate						120	// implemented - reduces healing by a %
 #define SE_ReverseDS					121 // implemented
-//#define SE_ReduceSkill				122	// not implemented    TODO: Now used on live, decreases skills by percent
+#define SE_ReduceSkill					122	// implemented - base: skill id, limit: none, max: none, formula: % skill is reduced (positive)
 #define SE_Screech						123	// implemented Spell Blocker(If have buff with value +1 will block any effect with -1)
 #define SE_ImprovedDamage				124 // implemented
 #define SE_ImprovedHeal					125 // implemented
@@ -1243,7 +1257,7 @@ typedef enum {
 #define SE_Ff_Override_NotFocusable		460 // implemented, @Fc, Allow spell to be focused event if flagged with 'not_focusable' in spell table, base: 1
 #define SE_ImprovedDamage2				461 // implemented, @Fc, On Caster, spell damage mod pct, base: min pct, limit: max pct
 #define SE_FcDamageAmt2					462 // implemented, @Fc, On Caster, spell damage mod flat amt, base: amt
-//#define SE_Shield_Target				463 //
+#define SE_Shield_Target				463 // implemented, Base1 % damage shielded on target
 #define SE_PC_Pet_Rampage				464 // implemented - Base1 % chance to do rampage for base2 % of damage each melee round
 #define SE_PC_Pet_AE_Rampage			465 // implemented - Base1 % chance to do AE rampage for base2 % of damage each melee round
 #define SE_PC_Pet_Flurry_Chance			466 // implemented - Base1 % chance to do flurry from double attack hit.
@@ -1369,7 +1383,7 @@ struct SPDat_Spell_Struct
 /* 101 */	int8 zone_type; // 01=Outdoors, 02=dungeons, ff=Any -- ZONETYPE
 /* 102 */	int8 environment_type; // -- ENVIRONMENTTYPE
 /* 103 */	int8 time_of_day; // -- TIMEOFDAY
-/* 104 */	uint8 classes[PLAYER_CLASS_COUNT]; // Classes, and their min levels -- WARRIORMIN ... BERSERKERMIN
+/* 104 */	uint8 classes[Class::PLAYER_CLASS_COUNT]; // Classes, and their min levels -- WARRIORMIN ... BERSERKERMIN
 /* 120 */	uint8 casting_animation; // -- CASTINGANIM
 /* 121 */	//uint8 TargetAnim; // -- TARGETANIM
 /* 122 */	//uint32 TravelType; // -- TRAVELTYPE
@@ -1508,6 +1522,7 @@ bool IsSummonPetSpell(uint16 spell_id);
 bool IsSummonPCSpell(uint16 spell_id);
 bool IsPetSpell(uint16 spell_id);
 bool IsCharmSpell(uint16 spell_id);
+bool IsResurrectionSicknessSpell(uint16 spell_id);
 bool IsBlindSpell(uint16 spell_id);
 bool IsHealthSpell(uint16 spell_id);
 bool IsCastTimeReductionSpell(uint16 spell_id);
@@ -1534,6 +1549,7 @@ bool IsSummonSpell(uint16 spell_id);
 bool IsDamageSpell(uint16 spell_id);
 bool IsFearSpell(uint16 spell_id);
 bool IsCureSpell(uint16 spell_id);
+bool IsHarmTouchSpell(uint16 spell_id);
 int GetSpellEffectIndex(uint16 spell_id, int effect_id);
 uint8 GetSpellMinimumLevel(uint16 spell_id);
 uint8 GetSpellLevel(uint16 spell_id, uint8 class_id);
@@ -1609,5 +1625,8 @@ bool IsSpellUsableInThisZoneType(uint16 spell_id, uint8 zone_type);
 const char *GetSpellName(uint16 spell_id);
 int GetSpellStatValue(uint16 spell_id, const char* stat_identifier, uint8 slot = 0);
 bool IsCastRestrictedSpell(uint16 spell_id);
+bool IsAegolismSpell(uint16 spell_id);
+bool AegolismStackingIsSymbolSpell(uint16 spell_id);
+bool AegolismStackingIsArmorClassSpell(uint16 spell_id);
 
 #endif

@@ -29,22 +29,22 @@ void Perl_Group_CastGroupSpell(Group* self, Mob* caster, uint16 spell_id) // @ca
 
 void Perl_Group_SplitExp(Group* self, uint32_t exp, Mob* other) // @categories Account and Character, Script Utility, Group
 {
-	self->SplitExp(exp, other);
+	self->SplitExp(ExpSource::Quest, exp, other);
 }
 
 void Perl_Group_GroupMessage(Group* self, Mob* sender, const char* message) // @categories Script Utility, Group
 {
 	// if no language is specificed, send it in common
-	self->GroupMessage(sender, 0, 100, message);
+	self->GroupMessage(sender, Language::CommonTongue, Language::MaxValue, message);
 }
 
 void Perl_Group_GroupMessage(Group* self, Mob* sender, uint8_t language, const char* message) // @categories Script Utility, Group
 {
-	if (!EQ::ValueWithin(language, 0, (MAX_PP_LANGUAGE - 1))) {
-		language = 0;
+	if (!EQ::ValueWithin(language, Language::CommonTongue, Language::Unknown27)) {
+		language = Language::CommonTongue;
 	}
 
-	self->GroupMessage(sender, language, 100, message);
+	self->GroupMessage(sender, language, Language::MaxValue, message);
 }
 
 uint32_t Perl_Group_GetTotalGroupDamage(Group* self, Mob* other) // @categories Script Utility, Group

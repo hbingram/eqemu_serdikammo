@@ -410,7 +410,7 @@ void DataBucket::BulkLoadEntities(DataBucketLoadType::Type t, std::vector<uint32
 			column = "npc_id";
 			break;
 		default:
-			LogError("Incorrect LoadType [{}]", t);
+			LogError("Incorrect LoadType [{}]", static_cast<int>(t));
 			break;
 	}
 
@@ -428,8 +428,6 @@ void DataBucket::BulkLoadEntities(DataBucketLoadType::Type t, std::vector<uint32
 		return;
 	}
 
-	size_t size_before = g_data_bucket_cache.size();
-
 	LogDataBucketsDetail("cache size before [{}] l size [{}]", g_data_bucket_cache.size(), l.size());
 
 	uint32 added_count = 0;
@@ -439,8 +437,6 @@ void DataBucket::BulkLoadEntities(DataBucketLoadType::Type t, std::vector<uint32
 			added_count++;
 		}
 	}
-
-	g_data_bucket_cache.reserve(g_data_bucket_cache.size() + added_count);
 
 	for (const auto &e: l) {
 		if (!ExistsInCache(e)) {
@@ -546,7 +542,7 @@ void DataBucket::HandleWorldMessage(ServerPacket *p)
 		n.e.id,
 		n.e.key_,
 		n.e.value,
-		n.update_action
+		static_cast<int>(n.update_action)
 	);
 
 	// delete

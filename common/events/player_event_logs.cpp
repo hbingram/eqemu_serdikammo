@@ -37,6 +37,8 @@ void PlayerEventLogs::Init()
 		db.emplace_back(e.id);
 	}
 
+	std::vector<PlayerEventLogSettingsRepository::PlayerEventLogSettings> settings_to_insert{};
+
 	// insert entries that don't exist in database
 	for (int i = PlayerEvent::GM_COMMAND; i != PlayerEvent::MAX; i++) {
 		bool is_in_database = std::find(db.begin(), db.end(), i) != db.end();
@@ -56,19 +58,19 @@ void PlayerEventLogs::Init()
 
 		bool is_missing_in_database = std::find(db.begin(), db.end(), i) == db.end();
 		if (is_missing_in_database && is_implemented && !is_deprecated) {
-			LogInfo(
-				"[New] PlayerEvent [{}] ({})",
-				PlayerEvent::EventName[i],
-				i
-			);
+			LogInfo("[New] PlayerEvent [{}] ({})", PlayerEvent::EventName[i], i);
 
 			auto c = PlayerEventLogSettingsRepository::NewEntity();
 			c.id             = i;
 			c.event_name     = PlayerEvent::EventName[i];
 			c.event_enabled  = m_settings[i].event_enabled;
 			c.retention_days = m_settings[i].retention_days;
-			PlayerEventLogSettingsRepository::InsertOne(*m_database, c);
+			settings_to_insert.emplace_back(c);
 		}
+	}
+
+	if (!settings_to_insert.empty()) {
+		PlayerEventLogSettingsRepository::ReplaceMany(*m_database, settings_to_insert);
 	}
 
 	bool processing_in_world = !RuleB(Logging, PlayerEventsQSProcess) && IsWorld();
@@ -611,7 +613,7 @@ void PlayerEventLogs::Process()
 
 void PlayerEventLogs::ProcessRetentionTruncation()
 {
-	LogInfo("Running truncation");
+	LogPlayerEvents("Running truncation");
 
 	for (int i = PlayerEvent::GM_COMMAND; i != PlayerEvent::MAX; i++) {
 		if (m_settings[i].retention_days > 0) {
@@ -640,6 +642,10 @@ void PlayerEventLogs::ProcessRetentionTruncation()
 void PlayerEventLogs::ReloadSettings()
 {
 	for (auto &e: PlayerEventLogSettingsRepository::All(*m_database)) {
+		if (e.id >= PlayerEvent::MAX || e.id < 0) {
+			continue;
+		}
+
 		m_settings[e.id] = e;
 	}
 }
@@ -648,53 +654,59 @@ const int32_t RETENTION_DAYS_DEFAULT = 7;
 
 void PlayerEventLogs::SetSettingsDefaults()
 {
-	m_settings[PlayerEvent::GM_COMMAND].event_enabled         = 1;
-	m_settings[PlayerEvent::ZONING].event_enabled             = 1;
-	m_settings[PlayerEvent::AA_GAIN].event_enabled            = 1;
-	m_settings[PlayerEvent::AA_PURCHASE].event_enabled        = 1;
-	m_settings[PlayerEvent::FORAGE_SUCCESS].event_enabled     = 0;
-	m_settings[PlayerEvent::FORAGE_FAILURE].event_enabled     = 0;
-	m_settings[PlayerEvent::FISH_SUCCESS].event_enabled       = 0;
-	m_settings[PlayerEvent::FISH_FAILURE].event_enabled       = 0;
-	m_settings[PlayerEvent::ITEM_DESTROY].event_enabled       = 1;
-	m_settings[PlayerEvent::WENT_ONLINE].event_enabled        = 0;
-	m_settings[PlayerEvent::WENT_OFFLINE].event_enabled       = 0;
-	m_settings[PlayerEvent::LEVEL_GAIN].event_enabled         = 1;
-	m_settings[PlayerEvent::LEVEL_LOSS].event_enabled         = 1;
-	m_settings[PlayerEvent::LOOT_ITEM].event_enabled          = 1;
-	m_settings[PlayerEvent::MERCHANT_PURCHASE].event_enabled  = 1;
-	m_settings[PlayerEvent::MERCHANT_SELL].event_enabled      = 1;
-	m_settings[PlayerEvent::GROUP_JOIN].event_enabled         = 0;
-	m_settings[PlayerEvent::GROUP_LEAVE].event_enabled        = 0;
-	m_settings[PlayerEvent::RAID_JOIN].event_enabled          = 0;
-	m_settings[PlayerEvent::RAID_LEAVE].event_enabled         = 0;
-	m_settings[PlayerEvent::GROUNDSPAWN_PICKUP].event_enabled = 1;
-	m_settings[PlayerEvent::NPC_HANDIN].event_enabled         = 1;
-	m_settings[PlayerEvent::SKILL_UP].event_enabled           = 0;
-	m_settings[PlayerEvent::TASK_ACCEPT].event_enabled        = 1;
-	m_settings[PlayerEvent::TASK_UPDATE].event_enabled        = 1;
-	m_settings[PlayerEvent::TASK_COMPLETE].event_enabled      = 1;
-	m_settings[PlayerEvent::TRADE].event_enabled              = 1;
-	m_settings[PlayerEvent::GIVE_ITEM].event_enabled          = 1;
-	m_settings[PlayerEvent::SAY].event_enabled                = 0;
-	m_settings[PlayerEvent::REZ_ACCEPTED].event_enabled       = 1;
-	m_settings[PlayerEvent::DEATH].event_enabled              = 1;
-	m_settings[PlayerEvent::COMBINE_FAILURE].event_enabled    = 1;
-	m_settings[PlayerEvent::COMBINE_SUCCESS].event_enabled    = 1;
-	m_settings[PlayerEvent::DROPPED_ITEM].event_enabled       = 1;
-	m_settings[PlayerEvent::SPLIT_MONEY].event_enabled        = 1;
-	m_settings[PlayerEvent::DZ_JOIN].event_enabled            = 1;
-	m_settings[PlayerEvent::DZ_LEAVE].event_enabled           = 1;
-	m_settings[PlayerEvent::TRADER_PURCHASE].event_enabled    = 1;
-	m_settings[PlayerEvent::TRADER_SELL].event_enabled        = 1;
-	m_settings[PlayerEvent::BANDOLIER_CREATE].event_enabled   = 0;
-	m_settings[PlayerEvent::BANDOLIER_SWAP].event_enabled     = 0;
-	m_settings[PlayerEvent::DISCOVER_ITEM].event_enabled      = 1;
-	m_settings[PlayerEvent::POSSIBLE_HACK].event_enabled      = 1;
-	m_settings[PlayerEvent::KILLED_NPC].event_enabled         = 0;
-	m_settings[PlayerEvent::KILLED_NAMED_NPC].event_enabled   = 1;
-	m_settings[PlayerEvent::KILLED_RAID_NPC].event_enabled    = 1;
-	m_settings[PlayerEvent::ITEM_CREATION].event_enabled      = 1;
+	m_settings[PlayerEvent::GM_COMMAND].event_enabled                = 1;
+	m_settings[PlayerEvent::ZONING].event_enabled                    = 1;
+	m_settings[PlayerEvent::AA_GAIN].event_enabled                   = 1;
+	m_settings[PlayerEvent::AA_PURCHASE].event_enabled               = 1;
+	m_settings[PlayerEvent::FORAGE_SUCCESS].event_enabled            = 0;
+	m_settings[PlayerEvent::FORAGE_FAILURE].event_enabled            = 0;
+	m_settings[PlayerEvent::FISH_SUCCESS].event_enabled              = 0;
+	m_settings[PlayerEvent::FISH_FAILURE].event_enabled              = 0;
+	m_settings[PlayerEvent::ITEM_DESTROY].event_enabled              = 1;
+	m_settings[PlayerEvent::WENT_ONLINE].event_enabled               = 0;
+	m_settings[PlayerEvent::WENT_OFFLINE].event_enabled              = 0;
+	m_settings[PlayerEvent::LEVEL_GAIN].event_enabled                = 1;
+	m_settings[PlayerEvent::LEVEL_LOSS].event_enabled                = 1;
+	m_settings[PlayerEvent::LOOT_ITEM].event_enabled                 = 1;
+	m_settings[PlayerEvent::MERCHANT_PURCHASE].event_enabled         = 1;
+	m_settings[PlayerEvent::MERCHANT_SELL].event_enabled             = 1;
+	m_settings[PlayerEvent::GROUP_JOIN].event_enabled                = 0;
+	m_settings[PlayerEvent::GROUP_LEAVE].event_enabled               = 0;
+	m_settings[PlayerEvent::RAID_JOIN].event_enabled                 = 0;
+	m_settings[PlayerEvent::RAID_LEAVE].event_enabled                = 0;
+	m_settings[PlayerEvent::GROUNDSPAWN_PICKUP].event_enabled        = 1;
+	m_settings[PlayerEvent::NPC_HANDIN].event_enabled                = 1;
+	m_settings[PlayerEvent::SKILL_UP].event_enabled                  = 0;
+	m_settings[PlayerEvent::TASK_ACCEPT].event_enabled               = 1;
+	m_settings[PlayerEvent::TASK_UPDATE].event_enabled               = 1;
+	m_settings[PlayerEvent::TASK_COMPLETE].event_enabled             = 1;
+	m_settings[PlayerEvent::TRADE].event_enabled                     = 1;
+	m_settings[PlayerEvent::GIVE_ITEM].event_enabled                 = 1;
+	m_settings[PlayerEvent::SAY].event_enabled                       = 0;
+	m_settings[PlayerEvent::REZ_ACCEPTED].event_enabled              = 1;
+	m_settings[PlayerEvent::DEATH].event_enabled                     = 1;
+	m_settings[PlayerEvent::COMBINE_FAILURE].event_enabled           = 1;
+	m_settings[PlayerEvent::COMBINE_SUCCESS].event_enabled           = 1;
+	m_settings[PlayerEvent::DROPPED_ITEM].event_enabled              = 1;
+	m_settings[PlayerEvent::SPLIT_MONEY].event_enabled               = 1;
+	m_settings[PlayerEvent::DZ_JOIN].event_enabled                   = 1;
+	m_settings[PlayerEvent::DZ_LEAVE].event_enabled                  = 1;
+	m_settings[PlayerEvent::TRADER_PURCHASE].event_enabled           = 1;
+	m_settings[PlayerEvent::TRADER_SELL].event_enabled               = 1;
+	m_settings[PlayerEvent::BANDOLIER_CREATE].event_enabled          = 0;
+	m_settings[PlayerEvent::BANDOLIER_SWAP].event_enabled            = 0;
+	m_settings[PlayerEvent::DISCOVER_ITEM].event_enabled             = 1;
+	m_settings[PlayerEvent::POSSIBLE_HACK].event_enabled             = 1;
+	m_settings[PlayerEvent::KILLED_NPC].event_enabled                = 0;
+	m_settings[PlayerEvent::KILLED_NAMED_NPC].event_enabled          = 1;
+	m_settings[PlayerEvent::KILLED_RAID_NPC].event_enabled           = 1;
+	m_settings[PlayerEvent::ITEM_CREATION].event_enabled             = 1;
+	m_settings[PlayerEvent::GUILD_TRIBUTE_DONATE_ITEM].event_enabled = 1;
+	m_settings[PlayerEvent::GUILD_TRIBUTE_DONATE_PLAT].event_enabled = 1;
+	m_settings[PlayerEvent::PARCEL_SEND].event_enabled               = 1;
+	m_settings[PlayerEvent::PARCEL_RETRIEVE].event_enabled           = 1;
+	m_settings[PlayerEvent::PARCEL_DELETE].event_enabled             = 1;
+	m_settings[PlayerEvent::BARTER_TRANSACTION].event_enabled        = 1;
 
 	for (int i = PlayerEvent::GM_COMMAND; i != PlayerEvent::MAX; i++) {
 		m_settings[i].retention_days = RETENTION_DAYS_DEFAULT;

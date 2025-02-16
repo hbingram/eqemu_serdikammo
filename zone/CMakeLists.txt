@@ -48,11 +48,13 @@ SET(zone_sources
     heal_rotation.cpp
     horse.cpp
     inventory.cpp
-    loottables.cpp
+    loot.cpp
     lua_bot.cpp
     lua_bit.cpp
+    lua_buff.cpp
     lua_corpse.cpp
     lua_client.cpp
+    lua_database.cpp
     lua_door.cpp
     lua_encounter.cpp
     lua_entity.cpp
@@ -64,6 +66,7 @@ SET(zone_sources
     lua_inventory.cpp
     lua_item.cpp
     lua_iteminst.cpp
+    lua_merc.cpp
     lua_mob.cpp
     lua_mod.cpp
     lua_npc.cpp
@@ -87,7 +90,7 @@ SET(zone_sources
     hate_list.cpp
     horse.cpp
     inventory.cpp
-    loottables.cpp
+    loot.cpp
     main.cpp
     map.cpp
     merc.cpp
@@ -100,18 +103,22 @@ SET(zone_sources
     npc_scale_manager.cpp
     object.cpp
     oriented_bounding_box.cpp
+    parcels.cpp
     pathfinder_interface.cpp
     pathfinder_nav_mesh.cpp
     pathfinder_null.cpp
     pathing.cpp
     perl_bot.cpp
+    perl_buff.cpp
     perl_client.cpp
+    perl_database.cpp
     perl_doors.cpp
     perl_entity.cpp
     perl_expedition.cpp
     perl_groups.cpp
     perl_hateentry.cpp
     perl_inventory.cpp
+    perl_merc.cpp
     perl_mob.cpp
     perl_npc.cpp
     perl_object.cpp
@@ -130,9 +137,12 @@ SET(zone_sources
     qglobals.cpp
     queryserv.cpp
     questmgr.cpp
+    quest_db.cpp
     quest_parser_collection.cpp
     raids.cpp
     raycast_mesh.cpp
+    sidecar_api/sidecar_api.cpp
+    sidecar_api/loot_simulator_controller.cpp
     shared_task_zone_messaging.cpp
     spawn2.cpp
     spawn2.h
@@ -158,7 +168,9 @@ SET(zone_sources
     zone.cpp
     zone_config.cpp
     zonedb.cpp
+    zone_base_data.cpp
     zone_event_scheduler.cpp
+    zone_npc_factions.cpp
     zone_reload.cpp
     zoning.cpp
 )
@@ -189,7 +201,6 @@ SET(zone_headers
     embperl.h
     encounter.h
     entity.h
-    errmsg.h
     event_codes.h
     expedition.h
     expedition_database.h
@@ -204,8 +215,10 @@ SET(zone_headers
     horse.h
     lua_bot.h
     lua_bit.h
+    lua_buff.h
     lua_client.h
     lua_corpse.h
+    lua_database.h
     lua_door.h
     lua_encounter.h
     lua_entity.h
@@ -217,6 +230,7 @@ SET(zone_headers
     lua_inventory.h
     lua_item.h
     lua_iteminst.h
+    lua_merc.h
     lua_mob.h
     lua_mod.h
     lua_npc.h
@@ -241,6 +255,7 @@ SET(zone_headers
     pathfinder_interface.h
     pathfinder_nav_mesh.h
     pathfinder_null.h
+    perl_database.h
     perlpacket.h
     petitions.h
     pets.h
@@ -250,9 +265,11 @@ SET(zone_headers
     queryserv.h
     quest_interface.h
     questmgr.h
+    quest_db.h
     quest_parser_collection.h
     raids.h
     raycast_mesh.h
+    sidecar_api/sidecar_api.h
     shared_task_zone_messaging.h
     spawn2.cpp
     spawn2.h
@@ -273,12 +290,19 @@ SET(zone_headers
     zone_config.h
     zonedb.h
     zonedump.h
+    zone_cli.h
     zone_reload.h
-)
+    zone_cli.cpp)
 
 ADD_EXECUTABLE(zone ${zone_sources} ${zone_headers})
 
 INSTALL(TARGETS zone RUNTIME DESTINATION ${CMAKE_INSTALL_PREFIX}/bin)
+
+IF (WIN32 AND EQEMU_BUILD_PCH)
+    TARGET_PRECOMPILE_HEADERS(zone PRIVATE ../common/pch/pch.h)
+    TARGET_PRECOMPILE_HEADERS(zone PRIVATE ../common/types.h ../common/eqemu_logsys.h ../common/eqemu_logsys_log_aliases.h ../common/features.h ../common/global_define.h)
+    TARGET_PRECOMPILE_HEADERS(zone PRIVATE mob.h npc.h corpse.h doors.h bot.h entity.h client.h zone.h)
+ENDIF()
 
 ADD_DEFINITIONS(-DZONE)
 

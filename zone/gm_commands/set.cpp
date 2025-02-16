@@ -5,6 +5,7 @@
 #include "set/alternate_currency.cpp"
 #include "set/animation.cpp"
 #include "set/anon.cpp"
+#include "set/auto_login.cpp"
 #include "set/bind_point.cpp"
 #include "set/checksum.cpp"
 #include "set/class_permanent.cpp"
@@ -33,6 +34,7 @@
 #include "set/loginserver_info.cpp"
 #include "set/mana.cpp"
 #include "set/mana_full.cpp"
+#include "set/motd.cpp"
 #include "set/name.cpp"
 #include "set/ooc_mute.cpp"
 #include "set/password.cpp"
@@ -70,6 +72,7 @@ void command_set(Client *c, const Seperator *sep)
 		Cmd{.cmd = "alternate_currency", .u = "alternate_currency [Currency ID] [Amount]", .fn = SetAlternateCurrency, .a = {"#setaltcurrency"}},
 		Cmd{.cmd = "animation", .u = "animation [Animation ID]", .fn = SetAnimation, .a = {"#setanim"}},
 		Cmd{.cmd = "anon", .u = "anon [Character ID] [Anonymous Flag] or #set anon [Anonymous Flag]", .fn = SetAnon, .a = {"#setanon"}},
+		Cmd{.cmd = "auto_login", .u = "auto_login [0|1]", .fn = SetAutoLogin, .a = {"#setautologin"}},
 		Cmd{.cmd = "bind_point", .u = "bind_point", .fn = SetBindPoint, .a = {"#setbind"}},
 		Cmd{.cmd = "checksum", .u = "checksum", .fn = SetChecksum, .a = {"#updatechecksum"}},
 		Cmd{.cmd = "class_permanent", .u = "class_permanent [Class ID]", .fn = SetClassPermanent, .a = {"#permaclass"}},
@@ -98,6 +101,7 @@ void command_set(Client *c, const Seperator *sep)
 		Cmd{.cmd = "loginserver_info", .u = "loginserver_info [Email] [Password]", .fn = SetLoginserverInfo, .a = {"#setlsinfo"}},
 		Cmd{.cmd = "mana", .u = "mana [Amount]", .fn = SetMana, .a = {"#setmana"}},
 		Cmd{.cmd = "mana_full", .u = "mana_full", .fn = SetManaFull, .a = {"#mana"}},
+		Cmd{.cmd = "motd", .u = "motd", .fn = SetMOTD, .a = {"#motd"}},
 		Cmd{.cmd = "name", .u = "name", .fn = SetName, .a = {"#name"}},
 		Cmd{.cmd = "ooc_mute", .u = "ooc_mute", .fn = SetOOCMute, .a = {"#oocmute"}},
 		Cmd{.cmd = "password", .u = "password [Account Name] [Password] (account table password)", .fn = SetPassword, .a = {"#setpass"}},
@@ -134,7 +138,9 @@ void command_set(Client *c, const Seperator *sep)
 
 				// skip the first arg
 				for (auto i = 1; i <= arguments; i++) {
-					args.emplace_back(sep->arg[i]);
+					if (sep->arg[i]) {
+						args.emplace_back(sep->arg[i]);
+					}
 				}
 
 				// build the rewrite string

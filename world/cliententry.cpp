@@ -138,8 +138,8 @@ void ClientListEntry::SetOnline(CLE_Status iOnline)
 		"Online status [{}] ({}) status [{}] ({})",
 		AccountName(),
 		AccountID(),
-		CLEStatusString[CLE_Status::Online],
-		iOnline
+		CLEStatusString[iOnline],
+		static_cast<int>(iOnline)
 	);
 
 	if (iOnline >= CLE_Status::Online && pOnline < CLE_Status::Online) {
@@ -223,6 +223,8 @@ void ClientListEntry::Update(ZoneServer *iZS, ServerClientList_Struct *scl, CLE_
 	panon          = scl->anon;
 	ptellsoff      = scl->tellsoff;
 	pguild_id      = scl->guild_id;
+	pguild_rank    = scl->guild_rank;
+	pguild_tribute_opt_in = scl->guild_tribute_opt_in;
 	pLFG           = scl->LFG;
 	gm             = scl->gm;
 	pClientVersion = scl->ClientVersion;
@@ -280,6 +282,7 @@ void ClientListEntry::ClearVars(bool iAll)
 	panon          = 0;
 	ptellsoff      = 0;
 	pguild_id      = GUILD_NONE;
+	pguild_rank    = 0;
 	pLFG           = 0;
 	gm             = 0;
 	pClientVersion = 0;
@@ -341,7 +344,7 @@ bool ClientListEntry::CheckAuth(uint32 loginserver_account_id, const char *key_p
 
 			paccountid = database.CreateAccount(
 				loginserver_account_name,
-				0,
+				std::string(),
 				default_account_status,
 				source_loginserver,
 				LSID()

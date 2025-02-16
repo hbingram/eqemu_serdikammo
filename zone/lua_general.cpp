@@ -26,6 +26,8 @@
 #include "data_bucket.h"
 #include "expedition.h"
 #include "dialogue_window.h"
+#include "../common/events/player_event_logs.h"
+#include "worldserver.h"
 
 struct Events { };
 struct Factions { };
@@ -41,6 +43,8 @@ struct MessageTypes { };
 struct Rule { };
 struct Journal_SpeakMode { };
 struct Journal_Mode { };
+struct ZoneIDs { };
+struct LanguageIDs { };
 
 struct lua_registered_event {
 	std::string encounter_name;
@@ -54,6 +58,8 @@ extern std::map<std::string, Encounter *> lua_encounters;
 
 extern void MapOpcodes();
 extern void ClearMappedOpcode(EmuOpcode op);
+
+extern WorldServer worldserver;
 
 void unregister_event(std::string package_name, std::string name, int evt);
 
@@ -299,35 +305,35 @@ void lua_disable_spawn2(int spawn2_id) {
 	quest_manager.disable_spawn2(spawn2_id);
 }
 
-void lua_set_timer(const char *timer, int time_ms) {
+void lua_set_timer(std::string timer, uint32 time_ms) {
 	quest_manager.settimerMS(timer, time_ms);
 }
 
-void lua_set_timer(const char *timer, int time_ms, Lua_ItemInst inst) {
+void lua_set_timer(std::string timer, uint32 time_ms, Lua_ItemInst inst) {
 	quest_manager.settimerMS(timer, time_ms, inst);
 }
 
-void lua_set_timer(const char *timer, int time_ms, Lua_Mob mob) {
+void lua_set_timer(std::string timer, uint32 time_ms, Lua_Mob mob) {
 	quest_manager.settimerMS(timer, time_ms, mob);
 }
 
-void lua_set_timer(const char *timer, int time_ms, Lua_Encounter enc) {
+void lua_set_timer(std::string timer, uint32 time_ms, Lua_Encounter enc) {
 	quest_manager.settimerMS(timer, time_ms, enc);
 }
 
-void lua_stop_timer(const char *timer) {
+void lua_stop_timer(std::string timer) {
 	quest_manager.stoptimer(timer);
 }
 
-void lua_stop_timer(const char *timer, Lua_ItemInst inst) {
+void lua_stop_timer(std::string timer, Lua_ItemInst inst) {
 	quest_manager.stoptimer(timer, inst);
 }
 
-void lua_stop_timer(const char *timer, Lua_Mob mob) {
+void lua_stop_timer(std::string timer, Lua_Mob mob) {
 	quest_manager.stoptimer(timer, mob);
 }
 
-void lua_stop_timer(const char *timer, Lua_Encounter enc) {
+void lua_stop_timer(std::string timer, Lua_Encounter enc) {
 	quest_manager.stoptimer(timer, enc);
 }
 
@@ -347,28 +353,27 @@ void lua_stop_all_timers(Lua_Encounter enc) {
 	quest_manager.stopalltimers(enc);
 }
 
-void lua_pause_timer(const char *timer) {
+void lua_pause_timer(std::string timer) {
 	quest_manager.pausetimer(timer);
-
 }
 
-void lua_resume_timer(const char *timer) {
+void lua_resume_timer(std::string timer) {
 	quest_manager.resumetimer(timer);
 }
 
-bool lua_is_paused_timer(const char *timer) {
+bool lua_is_paused_timer(std::string timer) {
 	return quest_manager.ispausedtimer(timer);
 }
 
-bool lua_has_timer(const char *timer) {
+bool lua_has_timer(std::string timer) {
 	return quest_manager.hastimer(timer);
 }
 
-uint32 lua_get_remaining_time(const char *timer) {
+uint32 lua_get_remaining_time(std::string timer) {
 	return quest_manager.getremainingtimeMS(timer);
 }
 
-uint32 lua_get_timer_duration(const char *timer) {
+uint32 lua_get_timer_duration(std::string timer) {
 	return quest_manager.gettimerdurationMS(timer);
 }
 
@@ -402,6 +407,10 @@ void lua_depop_zone(bool start_spawn_status) {
 
 void lua_repop_zone() {
 	quest_manager.repopzone();
+}
+
+void lua_repop_zone(bool is_forced) {
+	quest_manager.repopzone(is_forced);
 }
 
 void lua_process_mobs_while_zone_empty(bool on) {
@@ -580,16 +589,16 @@ void lua_summon_all_player_corpses(uint32 char_id, float x, float y, float z, fl
 	quest_manager.summonallplayercorpses(char_id, glm::vec4(x, y, z, h));
 }
 
-int lua_get_player_corpse_count(uint32 char_id) {
-	return database.CountCharacterCorpses(char_id);
+int64 lua_get_player_corpse_count(uint32 character_id) {
+	return database.CountCharacterCorpses(character_id);
 }
 
-int lua_get_player_corpse_count_by_zone_id(uint32 char_id, uint32 zone_id) {
-	return database.CountCharacterCorpsesByZoneID(char_id, zone_id);
+int64 lua_get_player_corpse_count_by_zone_id(uint32 character_id, uint32 zone_id) {
+	return database.CountCharacterCorpsesByZoneID(character_id, zone_id);
 }
 
-int lua_get_player_buried_corpse_count(uint32 char_id) {
-	return quest_manager.getplayerburiedcorpsecount(char_id);
+int64 lua_get_player_buried_corpse_count(uint32 character_id) {
+	return quest_manager.getplayerburiedcorpsecount(character_id);
 }
 
 bool lua_bury_player_corpse(uint32 char_id) {
@@ -879,29 +888,28 @@ int lua_merchant_count_item(uint32 npc_id, uint32 item_id) {
 	return quest_manager.MerchantCountItem(npc_id, item_id);
 }
 
+std::string lua_get_item_comment(uint32 item_id) {
+	return quest_manager.getitemcomment(item_id);
+}
+
+std::string lua_get_item_lore(uint32 item_id) {
+	return quest_manager.getitemlore(item_id);
+}
+
 std::string lua_get_item_name(uint32 item_id) {
 	return quest_manager.getitemname(item_id);
 }
 
-std::string lua_say_link(const char *phrase, bool silent, const char *link_name) {
-	char text[256] = { 0 };
-	strncpy(text, phrase, 255);
-
-	return quest_manager.saylink(text, silent, link_name);
+std::string lua_say_link(std::string  text) {
+	return Saylink::Create(text);
 }
 
-std::string lua_say_link(const char *phrase, bool silent) {
-	char text[256] = { 0 };
-	strncpy(text, phrase, 255);
-
-	return quest_manager.saylink(text, silent, text);
+std::string lua_say_link(std::string text, bool silent) {
+	return Saylink::Create(text, silent, text);
 }
 
-std::string lua_say_link(const char *phrase) {
-	char text[256] = { 0 };
-	strncpy(text, phrase, 255);
-
-	return quest_manager.saylink(text, false, text);
+std::string lua_say_link(std::string text, bool silent, std::string link_name) {
+	return Saylink::Create(text, silent, link_name);
 }
 
 void lua_set_rule(std::string rule_name, std::string rule_value) {
@@ -1266,7 +1274,7 @@ int lua_get_zone_weather() {
 }
 
 luabind::adl::object lua_get_zone_time(lua_State *L) {
-	TimeOfDay_Struct eqTime;
+	TimeOfDay_Struct eqTime{};
 	zone->zone_time.GetCurrentEQTimeOfDay(time(0), &eqTime);
 
 	luabind::adl::object ret = luabind::newtable(L);
@@ -1812,6 +1820,7 @@ bool lua_is_content_flag_enabled(std::string content_flag){
 
 void lua_set_content_flag(std::string flag_name, bool enabled){
 	content_service.SetContentFlag(flag_name, enabled);
+	zone->ReloadContentFlags();
 }
 
 Lua_Expedition lua_get_expedition() {
@@ -1938,36 +1947,36 @@ std::string lua_get_hex_color_code(std::string color_name) {
 	return quest_manager.gethexcolorcode(color_name);
 }
 
-double lua_get_aa_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id) {
-	return database.GetAAEXPModifier(character_id, zone_id);
+float lua_get_aa_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id) {
+	return quest_manager.GetAAEXPModifierByCharID(character_id, zone_id);
 }
 
-double lua_get_aa_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, int16 instance_version) {
-	return database.GetAAEXPModifier(character_id, zone_id, instance_version);
+float lua_get_aa_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, int16 instance_version) {
+	return quest_manager.GetAAEXPModifierByCharID(character_id, zone_id, instance_version);
 }
 
-double lua_get_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id) {
-	return database.GetEXPModifier(character_id, zone_id);
+float lua_get_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id) {
+	return quest_manager.GetEXPModifierByCharID(character_id, zone_id);
 }
 
-double lua_get_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, int16 instance_version) {
-	return database.GetEXPModifier(character_id, zone_id, instance_version);
+float lua_get_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, int16 instance_version) {
+	return quest_manager.GetEXPModifierByCharID(character_id, zone_id, instance_version);
 }
 
-void lua_set_aa_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, double aa_modifier) {
-	database.SetAAEXPModifier(character_id, zone_id, aa_modifier);
+void lua_set_aa_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, float aa_modifier) {
+	quest_manager.SetAAEXPModifierByCharID(character_id, zone_id, aa_modifier);
 }
 
-void lua_set_aa_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, double aa_modifier, int16 instance_version) {
-	database.SetAAEXPModifier(character_id, zone_id, aa_modifier, instance_version);
+void lua_set_aa_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, float aa_modifier, int16 instance_version) {
+	quest_manager.SetAAEXPModifierByCharID(character_id, zone_id, aa_modifier, instance_version);
 }
 
-void lua_set_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, double exp_modifier) {
-	database.SetEXPModifier(character_id, zone_id, exp_modifier);
+void lua_set_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, float exp_modifier) {
+	quest_manager.SetEXPModifierByCharID(character_id, zone_id, exp_modifier);
 }
 
-void lua_set_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, double exp_modifier, int16 instance_version) {
-	database.SetEXPModifier(character_id, zone_id, exp_modifier, instance_version);
+void lua_set_exp_modifier_by_char_id(uint32 character_id, uint32 zone_id, float exp_modifier, int16 instance_version) {
+	quest_manager.SetEXPModifierByCharID(character_id, zone_id, exp_modifier, instance_version);
 }
 
 void lua_add_ldon_loss(uint32 theme_id) {
@@ -2538,90 +2547,424 @@ void lua_cross_zone_message_player_by_name(uint32 type, const char* client_name,
 	quest_manager.CrossZoneMessage(update_type, update_identifier, type, message, client_name);
 }
 
-void lua_cross_zone_move_player_by_char_id(int character_id, const char* zone_short_name) {
-	uint8 update_type = CZUpdateType_Character;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZone;
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(update_type, update_subtype, character_id, zone_short_name, instance_id);
+void lua_cross_zone_move_player_by_char_id(uint32 character_id, std::string zone_short_name) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void lua_cross_zone_move_player_by_group_id(int group_id, const char* zone_short_name) {
-	uint8 update_type = CZUpdateType_Group;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZone;
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(update_type, update_subtype, group_id, zone_short_name, instance_id);
+void lua_cross_zone_move_player_by_char_id(uint32 character_id, std::string zone_short_name, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void lua_cross_zone_move_player_by_raid_id(int raid_id, const char* zone_short_name) {
-	uint8 update_type = CZUpdateType_Raid;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZone;
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(update_type, update_subtype, raid_id, zone_short_name, instance_id);
+void lua_cross_zone_move_player_by_char_id(uint32 character_id, std::string zone_short_name, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void lua_cross_zone_move_player_by_guild_id(int guild_id, const char* zone_short_name) {
-	uint8 update_type = CZUpdateType_Guild;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZone;
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(update_type, update_subtype, guild_id, zone_short_name, instance_id);
+void lua_cross_zone_move_player_by_group_id(uint32 group_id, std::string zone_short_name) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void lua_cross_zone_move_player_by_expedition_id(int expedition_id, const char* zone_short_name) {
-	uint8 update_type = CZUpdateType_Expedition;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZone;
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(update_type, update_subtype, expedition_id, zone_short_name, instance_id);
+void lua_cross_zone_move_player_by_group_id(uint32 group_id, std::string zone_short_name, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void lua_cross_zone_move_player_by_client_name(const char* client_name, const char* zone_short_name) {
-	uint8 update_type = CZUpdateType_Character;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZone;
-	int update_identifier = 0;
-	uint16 instance_id = 0;
-	quest_manager.CrossZoneMove(update_type, update_subtype, update_identifier, zone_short_name, instance_id, client_name);
+void lua_cross_zone_move_player_by_group_id(uint32 group_id, std::string zone_short_name, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void lua_cross_zone_move_instance_by_char_id(int character_id, uint16 instance_id) {
-	uint8 update_type = CZUpdateType_Character;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZoneInstance;
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(update_type, update_subtype, character_id, zone_short_name, instance_id);
+void lua_cross_zone_move_player_by_raid_id(uint32 raid_id, std::string zone_short_name) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void lua_cross_zone_move_instance_by_group_id(int group_id, uint16 instance_id) {
-	uint8 update_type = CZUpdateType_Group;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZoneInstance;
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(update_type, update_subtype, group_id, zone_short_name, instance_id);
+void lua_cross_zone_move_player_by_raid_id(uint32 raid_id, std::string zone_short_name, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void lua_cross_zone_move_instance_by_raid_id(int raid_id, uint16 instance_id) {
-	uint8 update_type = CZUpdateType_Raid;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZoneInstance;
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(update_type, update_subtype, raid_id, zone_short_name, instance_id);
+void lua_cross_zone_move_player_by_raid_id(uint32 raid_id, std::string zone_short_name, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
 }
 
-void lua_cross_zone_move_instance_by_guild_id(int guild_id, uint16 instance_id) {
-	uint8 update_type = CZUpdateType_Guild;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZoneInstance;
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(update_type, update_subtype, guild_id, zone_short_name, instance_id);
+void lua_cross_zone_move_player_by_guild_id(uint32 guild_id, std::string zone_short_name) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void lua_cross_zone_move_player_by_guild_id(uint32 guild_id, std::string zone_short_name, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void lua_cross_zone_move_player_by_guild_id(uint32 guild_id, std::string zone_short_name, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void lua_cross_zone_move_player_by_expedition_id(uint32 expedition_id, std::string zone_short_name) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void lua_cross_zone_move_player_by_expedition_id(uint32 expedition_id, std::string zone_short_name, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void lua_cross_zone_move_player_by_expedition_id(uint32 expedition_id, std::string zone_short_name, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void lua_cross_zone_move_player_by_client_name(std::string client_name, std::string zone_short_name) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void lua_cross_zone_move_player_by_client_name(std::string client_name, std::string zone_short_name, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void lua_cross_zone_move_player_by_client_name(std::string client_name, std::string zone_short_name, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.coordinates = glm::vec4(x, y, z, heading),
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZone,
+			.zone_short_name = zone_short_name,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_char_id(uint32 character_id, uint16 instance_id) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.instance_id = instance_id,
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_char_id(uint32 character_id, uint16 instance_id, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_char_id(uint32 character_id, uint16 instance_id, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_identifier = character_id,
+			.update_type = CZUpdateType_Character,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_group_id(uint32 group_id, uint16 instance_id) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.instance_id = instance_id,
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_group_id(uint32 group_id, uint16 instance_id, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_group_id(uint32 group_id, uint16 instance_id, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_identifier = group_id,
+			.update_type = CZUpdateType_Group,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_raid_id(uint32 raid_id, uint16 instance_id) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.instance_id = instance_id,
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_raid_id(uint32 raid_id, uint16 instance_id, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_raid_id(uint32 raid_id, uint16 instance_id, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_identifier = raid_id,
+			.update_type = CZUpdateType_Raid,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_guild_id(uint32 guild_id, uint16 instance_id) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.instance_id = instance_id,
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_guild_id(uint32 guild_id, uint16 instance_id, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_guild_id(uint32 guild_id, uint16 instance_id, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_identifier = guild_id,
+			.update_type = CZUpdateType_Guild,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
 }
 
 void lua_cross_zone_move_instance_by_expedition_id(uint32 expedition_id, uint16 instance_id) {
-	uint8 update_type = CZUpdateType_Expedition;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZoneInstance;
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(update_type, update_subtype, expedition_id, zone_short_name, instance_id);
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.instance_id = instance_id,
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
 }
 
-void lua_cross_zone_move_instance_by_client_name(const char* client_name, uint16 instance_id) {
-	uint8 update_type = CZUpdateType_ClientName;
-	uint8 update_subtype = CZMoveUpdateSubtype_MoveZoneInstance;
-	int update_identifier = 0;
-	const char* zone_short_name = "";
-	quest_manager.CrossZoneMove(update_type, update_subtype, update_identifier, zone_short_name, instance_id, client_name);
+void lua_cross_zone_move_instance_by_expedition_id(uint32 expedition_id, uint16 instance_id, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_expedition_id(uint32 expedition_id, uint16 instance_id, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_identifier = expedition_id,
+			.update_type = CZUpdateType_Expedition,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_client_name(std::string client_name, uint16 instance_id) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.instance_id = instance_id,
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_client_name(std::string client_name, uint16 instance_id, float x, float y, float z) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.coordinates = glm::vec4(x, y, z, 0.0f),
+			.instance_id = instance_id,
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
+}
+
+void lua_cross_zone_move_instance_by_client_name(std::string client_name, uint16 instance_id, float x, float y, float z, float heading) {
+	quest_manager.CrossZoneMove(
+		CZMove_Struct{
+			.client_name = client_name,
+			.coordinates = glm::vec4(x, y, z, heading),
+			.instance_id = instance_id,
+			.update_type = CZUpdateType_ClientName,
+			.update_subtype = CZMoveUpdateSubtype_MoveZoneInstance,
+		}
+	);
 }
 
 void lua_cross_zone_remove_ldon_loss_by_char_id(int character_id, uint32 theme_id) {
@@ -3447,12 +3790,12 @@ std::string lua_get_faction_name(int faction_id) {
 	return quest_manager.getfactionname(faction_id);
 }
 
-std::string lua_get_language_name(int language_id) {
+std::string lua_get_language_name(uint8 language_id) {
 	return quest_manager.getlanguagename(language_id);
 }
 
-std::string lua_get_body_type_name(uint32 bodytype_id) {
-	return quest_manager.getbodytypename(bodytype_id);
+std::string lua_get_body_type_name(uint8 body_type_id) {
+	return quest_manager.getbodytypename(body_type_id);
 }
 
 std::string lua_get_consider_level_name(uint8 consider_level) {
@@ -3650,6 +3993,10 @@ void lua_do_anim(int animation_id, int animation_speed, bool ackreq)
 void lua_do_anim(int animation_id, int animation_speed, bool ackreq, int filter)
 {
 	quest_manager.doanim(animation_id, animation_speed, ackreq, static_cast<eqFilterType>(filter));
+}
+
+std::string lua_item_link(Lua_ItemInst inst) {
+	return quest_manager.varlink(inst);
 }
 
 std::string lua_item_link(uint32 item_id) {
@@ -4401,6 +4748,26 @@ int lua_get_zone_minimum_lava_damage(uint32 zone_id, int version)
 	return zone_store.GetZoneMinimumLavaDamage(zone_id, version);
 }
 
+uint8 lua_get_zone_idle_when_empty(uint32 zone_id)
+{
+	return zone_store.GetZoneIdleWhenEmpty(zone_id);
+}
+
+uint8 lua_get_zone_idle_when_empty(uint32 zone_id, int version)
+{
+	return zone_store.GetZoneIdleWhenEmpty(zone_id, version);
+}
+
+uint32 lua_get_zone_seconds_before_idle(uint32 zone_id)
+{
+	return zone_store.GetZoneSecondsBeforeIdle(zone_id);
+}
+
+uint32 lua_get_zone_seconds_before_idle(uint32 zone_id, int version)
+{
+	return zone_store.GetZoneSecondsBeforeIdle(zone_id, version);
+}
+
 void lua_send_channel_message(uint8 channel_number, uint32 guild_id, uint8 language_id, uint8 language_skill, const char* message)
 {
 	quest_manager.SendChannelMessage(channel_number, guild_id, language_id, language_skill, message);
@@ -5040,6 +5407,244 @@ std::string lua_convert_money_to_string(luabind::adl::object table)
 	return Strings::Money(platinum, gold, silver, copper);
 }
 
+void lua_cast_spell(uint16 spell_id, uint16 target_id)
+{
+	quest_manager.castspell(spell_id, target_id);
+}
+
+void lua_self_cast(uint16 spell_id)
+{
+	quest_manager.selfcast(spell_id);
+}
+
+uint8 lua_get_bot_class_by_id(uint32 bot_id)
+{
+	return database.botdb.GetBotClassByID(bot_id);
+}
+
+uint8 lua_get_bot_gender_by_id(uint32 bot_id)
+{
+	return database.botdb.GetBotGenderByID(bot_id);
+}
+
+luabind::object lua_get_bot_ids_by_character_id(lua_State* L, uint32 character_id)
+{
+	auto lua_table = luabind::newtable(L);
+
+	const auto& l = database.botdb.GetBotIDsByCharacterID(character_id);
+
+	if (!l.empty()) {
+		int index = 1;
+		for (const auto& i : l) {
+			lua_table[index] = i;
+			index++;
+		}
+	}
+
+	return lua_table;
+}
+
+luabind::object lua_get_bot_ids_by_character_id(lua_State* L, uint32 character_id, uint8 class_id)
+{
+	auto lua_table = luabind::newtable(L);
+
+	const auto& l = database.botdb.GetBotIDsByCharacterID(character_id, class_id);
+
+	if (!l.empty()) {
+		int index = 1;
+		for (const auto& i : l) {
+			lua_table[index] = i;
+			index++;
+		}
+	}
+
+	return lua_table;
+}
+
+uint8 lua_get_bot_level_by_id(uint32 bot_id)
+{
+	return database.botdb.GetBotLevelByID(bot_id);
+}
+
+std::string lua_get_bot_name_by_id(uint32 bot_id)
+{
+	return database.botdb.GetBotNameByID(bot_id);
+}
+
+uint16 lua_get_bot_race_by_id(uint32 bot_id)
+{
+	return database.botdb.GetBotRaceByID(bot_id);
+}
+
+std::string lua_silent_say_link(std::string text) {
+	return Saylink::Silent(text);
+}
+
+std::string lua_silent_say_link(std::string text, std::string link_name) {
+	return Saylink::Silent(text, link_name);
+}
+
+uint16 lua_get_class_bitmask(uint8 class_id) {
+	return GetPlayerClassBit(class_id);
+}
+
+uint32 lua_get_deity_bitmask(uint32 deity_id) {
+	return Deity::GetBitmask(deity_id);
+}
+
+uint16 lua_get_race_bitmask(uint16 race_id) {
+	return GetPlayerRaceBit(race_id);
+}
+
+std::string lua_get_auto_login_character_name_by_account_id(uint32 account_id) {
+	return quest_manager.GetAutoLoginCharacterNameByAccountID(account_id);
+}
+
+bool lua_set_auto_login_character_name_by_account_id(uint32 account_id, std::string character_name) {
+	return quest_manager.SetAutoLoginCharacterNameByAccountID(account_id, character_name);
+}
+
+uint32 lua_get_zone_id_by_long_name(std::string zone_long_name) {
+	return zone_store.GetZoneIDByLongName(zone_long_name);
+}
+
+std::string lua_get_zone_short_name_by_long_name(std::string zone_long_name) {
+	return zone_store.GetZoneShortNameByLongName(zone_long_name);
+}
+
+bool lua_send_parcel(luabind::object lua_table)
+{
+	if (luabind::type(lua_table) != LUA_TTABLE) {
+		return false;
+	}
+
+	if (
+		(luabind::type(lua_table["name"]) == LUA_TNIL && luabind::type(lua_table["character_id"]) == LUA_TNIL) ||
+		luabind::type(lua_table["item_id"]) == LUA_TNIL ||
+		luabind::type(lua_table["quantity"]) == LUA_TNIL
+	) {
+		return false;
+	}
+
+	std::string name         = luabind::type(lua_table["name"]) != LUA_TNIL ? luabind::object_cast<std::string>(lua_table["name"]) : "";
+	uint32      character_id = luabind::type(lua_table["character_id"]) != LUA_TNIL ? luabind::object_cast<uint32>(lua_table["character_id"]) : 0;
+
+	if (character_id) {
+		const std::string& character_name = database.GetCharName(character_id);
+		if (character_name.empty()) {
+			return false;
+		}
+
+		name = character_name;
+	} else {
+		auto v = CharacterParcelsRepository::GetParcelCountAndCharacterName(database, name);
+		if (v.at(0).character_name.empty()) {
+			return false;
+		}
+
+		character_id = v.at(0).char_id;
+	}
+
+	if (!character_id) {
+		return false;
+	}
+
+	const int next_parcel_slot = CharacterParcelsRepository::GetNextFreeParcelSlot(database, character_id, RuleI(Parcel, ParcelMaxItems));
+	if (next_parcel_slot == INVALID_INDEX) {
+		return false;
+	}
+
+	const uint32 item_id         = luabind::object_cast<uint32>(lua_table["item_id"]);
+	const int16  quantity        = luabind::object_cast<int16>(lua_table["quantity"]);
+	const uint32 augment_one     = luabind::type(lua_table["augment_one"]) != LUA_TNIL ? luabind::object_cast<uint32>(lua_table["augment_one"]) : 0;
+	const uint32 augment_two     = luabind::type(lua_table["augment_two"]) != LUA_TNIL ? luabind::object_cast<uint32>(lua_table["augment_two"]) : 0;
+	const uint32 augment_three   = luabind::type(lua_table["augment_three"]) != LUA_TNIL ? luabind::object_cast<uint32>(lua_table["augment_three"]) : 0;
+	const uint32 augment_four    = luabind::type(lua_table["augment_four"]) != LUA_TNIL ? luabind::object_cast<uint32>(lua_table["augment_four"]) : 0;
+	const uint32 augment_five    = luabind::type(lua_table["augment_five"]) != LUA_TNIL ? luabind::object_cast<uint32>(lua_table["augment_five"]) : 0;
+	const uint32 augment_six     = luabind::type(lua_table["augment_six"]) != LUA_TNIL ? luabind::object_cast<uint32>(lua_table["augment_six"]) : 0;
+	const std::string& from_name = luabind::type(lua_table["from_name"]) != LUA_TNIL ? luabind::object_cast<std::string>(lua_table["from_name"]) : std::string();
+	const std::string& note      = luabind::type(lua_table["note"]) != LUA_TNIL ? luabind::object_cast<std::string>(lua_table["note"]) : std::string();
+
+	auto e = CharacterParcelsRepository::NewEntity();
+
+	e.char_id    = character_id;
+	e.item_id    = item_id;
+	e.aug_slot_1 = augment_one;
+	e.aug_slot_2 = augment_two;
+	e.aug_slot_3 = augment_three;
+	e.aug_slot_4 = augment_four;
+	e.aug_slot_5 = augment_five;
+	e.aug_slot_6 = augment_six;
+	e.slot_id    = next_parcel_slot;
+	e.quantity   = quantity;
+	e.from_name  = from_name;
+	e.note       = note;
+	e.sent_date  = std::time(nullptr);
+
+	auto out = CharacterParcelsRepository::InsertOne(database, e).id;
+	if (out) {
+		Parcel_Struct ps{};
+		ps.item_slot = e.slot_id;
+		strn0cpy(ps.send_to, name.c_str(), sizeof(ps.send_to));
+
+		std::unique_ptr<ServerPacket> server_packet(new ServerPacket(ServerOP_ParcelDelivery, sizeof(Parcel_Struct)));
+		auto                          data = (Parcel_Struct *) server_packet->pBuffer;
+
+		data->item_slot = ps.item_slot;
+		strn0cpy(data->send_to, ps.send_to, sizeof(data->send_to));
+
+		worldserver.SendPacket(server_packet.get());
+	}
+
+	return out;
+}
+
+uint32 lua_get_zone_uptime()
+{
+	return Timer::GetCurrentTime() / 1000;
+}
+
+int lua_are_tasks_completed(luabind::object task_ids)
+{
+	if (luabind::type(task_ids) != LUA_TTABLE) {
+		return 0;
+	}
+
+	std::vector<int> v;
+	int index = 1;
+	while (luabind::type(task_ids[index]) != LUA_TNIL) {
+		auto current_id = task_ids[index];
+		int task_id = 0;
+		if (luabind::type(current_id) != LUA_TNIL) {
+			try {
+				task_id = luabind::object_cast<int>(current_id);
+			} catch(luabind::cast_failed &) {
+			}
+		} else {
+			break;
+		}
+
+		v.push_back(task_id);
+		++index;
+	}
+
+	if (v.empty()) {
+		return 0;
+	}
+
+	return quest_manager.aretaskscompleted(v);
+}
+
+void lua_spawn_circle(uint32 npc_id, float x, float y, float z, float heading, float radius, uint32 points)
+{
+	quest_manager.SpawnCircle(npc_id, glm::vec4(x, y, z, heading), radius, points);
+}
+
+void lua_spawn_grid(uint32 npc_id, float x, float y, float z, float heading, float spacing, uint32 spawn_count)
+{
+	quest_manager.SpawnGrid(npc_id, glm::vec4(x, y, z, heading), spacing, spawn_count);
+}
+
 #define LuaCreateNPCParse(name, c_type, default_value) do { \
 	cur = table[#name]; \
 	if(luabind::type(cur) != LUA_TNIL) { \
@@ -5089,7 +5694,7 @@ void lua_create_npc(luabind::adl::object table, float x, float y, float z, float
 	LuaCreateNPCParse(runspeed, float, 1.25f);
 	LuaCreateNPCParse(gender, uint8, 0);
 	LuaCreateNPCParse(race, uint16, 1);
-	LuaCreateNPCParse(class_, uint8, WARRIOR);
+	LuaCreateNPCParse(class_, uint8, Class::Warrior);
 	LuaCreateNPCParse(bodytype, uint8, 0);
 	LuaCreateNPCParse(deity, uint8, 0);
 	LuaCreateNPCParse(level, uint8, 1);
@@ -5218,6 +5823,10 @@ bool get_ruleb(int rule) {
 	return RuleManager::Instance()->GetBoolRule((RuleManager::BoolType)rule);
 }
 
+std::string get_rules(int rule) {
+	return RuleManager::Instance()->GetStringRule((RuleManager::StringType)rule);
+}
+
 luabind::scope lua_register_general() {
 	return luabind::namespace_("eq")
 	[(
@@ -5247,20 +5856,20 @@ luabind::scope lua_register_general() {
 		luabind::def("spawn_from_spawn2", (Lua_Mob(*)(uint32))&lua_spawn_from_spawn2),
 		luabind::def("enable_spawn2", &lua_enable_spawn2),
 		luabind::def("disable_spawn2", &lua_disable_spawn2),
-		luabind::def("has_timer", (bool(*)(const char*))&lua_has_timer),
-		luabind::def("get_remaining_time", (uint32(*)(const char*))&lua_get_remaining_time),
-		luabind::def("get_timer_duration", (uint32(*)(const char*))&lua_get_timer_duration),
-		luabind::def("set_timer", (void(*)(const char*, int))&lua_set_timer),
-		luabind::def("set_timer", (void(*)(const char*, int, Lua_ItemInst))&lua_set_timer),
-		luabind::def("set_timer", (void(*)(const char*, int, Lua_Mob))&lua_set_timer),
-		luabind::def("set_timer", (void(*)(const char*, int, Lua_Encounter))&lua_set_timer),
-		luabind::def("stop_timer", (void(*)(const char*))&lua_stop_timer),
-		luabind::def("stop_timer", (void(*)(const char*, Lua_ItemInst))&lua_stop_timer),
-		luabind::def("stop_timer", (void(*)(const char*, Lua_Mob))&lua_stop_timer),
-		luabind::def("stop_timer", (void(*)(const char*, Lua_Encounter))&lua_stop_timer),
-		luabind::def("pause_timer", (void(*)(const char*))&lua_pause_timer),
-		luabind::def("resume_timer", (void(*)(const char*))&lua_resume_timer),
-		luabind::def("is_paused_timer", (bool(*)(const char*))&lua_is_paused_timer),
+		luabind::def("has_timer", (bool(*)(std::string))&lua_has_timer),
+		luabind::def("get_remaining_time", (uint32(*)(std::string))&lua_get_remaining_time),
+		luabind::def("get_timer_duration", (uint32(*)(std::string))&lua_get_timer_duration),
+		luabind::def("set_timer", (void(*)(std::string, uint32))&lua_set_timer),
+		luabind::def("set_timer", (void(*)(std::string, uint32, Lua_ItemInst))&lua_set_timer),
+		luabind::def("set_timer", (void(*)(std::string, uint32, Lua_Mob))&lua_set_timer),
+		luabind::def("set_timer", (void(*)(std::string, uint32, Lua_Encounter))&lua_set_timer),
+		luabind::def("stop_timer", (void(*)(std::string))&lua_stop_timer),
+		luabind::def("stop_timer", (void(*)(std::string, Lua_ItemInst))&lua_stop_timer),
+		luabind::def("stop_timer", (void(*)(std::string, Lua_Mob))&lua_stop_timer),
+		luabind::def("stop_timer", (void(*)(std::string, Lua_Encounter))&lua_stop_timer),
+		luabind::def("pause_timer", (void(*)(std::string))&lua_pause_timer),
+		luabind::def("resume_timer", (void(*)(std::string))&lua_resume_timer),
+		luabind::def("is_paused_timer", (bool(*)(std::string))&lua_is_paused_timer),
 		luabind::def("stop_all_timers", (void(*)(void))&lua_stop_all_timers),
 		luabind::def("stop_all_timers", (void(*)(Lua_ItemInst))&lua_stop_all_timers),
 		luabind::def("stop_all_timers", (void(*)(Lua_Mob))&lua_stop_all_timers),
@@ -5272,7 +5881,8 @@ luabind::scope lua_register_general() {
 		luabind::def("depop_all", (void(*)(void))&lua_depop_all),
 		luabind::def("depop_all", (void(*)(int))&lua_depop_all),
 		luabind::def("depop_zone", &lua_depop_zone),
-		luabind::def("repop_zone", &lua_repop_zone),
+		luabind::def("repop_zone", (void(*)(void))&lua_repop_zone),
+		luabind::def("repop_zone", (void(*)(bool))&lua_repop_zone),
 		luabind::def("process_mobs_while_zone_empty", &lua_process_mobs_while_zone_empty),
 		luabind::def("is_disc_tome", &lua_is_disc_tome),
 		luabind::def("get_race_name", (std::string(*)(uint16))&lua_get_race_name),
@@ -5376,6 +5986,7 @@ luabind::scope lua_register_general() {
 		luabind::def("merchant_set_item", (void(*)(uint32,uint32))&lua_merchant_set_item),
 		luabind::def("merchant_set_item", (void(*)(uint32,uint32,uint32))&lua_merchant_set_item),
 		luabind::def("merchant_count_item", &lua_merchant_count_item),
+		luabind::def("item_link", (std::string(*)(Lua_ItemInst))&lua_item_link),
 		luabind::def("item_link", (std::string(*)(uint32))&lua_item_link),
 		luabind::def("item_link", (std::string(*)(uint32,int16))&lua_item_link),
 		luabind::def("item_link", (std::string(*)(uint32,int16,uint32))&lua_item_link),
@@ -5385,10 +5996,12 @@ luabind::scope lua_register_general() {
 		luabind::def("item_link", (std::string(*)(uint32,int16,uint32,uint32,uint32,uint32,uint32))&lua_item_link),
 		luabind::def("item_link", (std::string(*)(uint32,int16,uint32,uint32,uint32,uint32,uint32,uint32))&lua_item_link),
 		luabind::def("item_link", (std::string(*)(uint32,int16,uint32,uint32,uint32,uint32,uint32,uint32,bool))&lua_item_link),
+		luabind::def("get_item_comment", (std::string(*)(uint32))&lua_get_item_comment),
+		luabind::def("get_item_lore", (std::string(*)(uint32))&lua_get_item_lore),
 		luabind::def("get_item_name", (std::string(*)(uint32))&lua_get_item_name),
-		luabind::def("say_link", (std::string(*)(const char*,bool,const char*))&lua_say_link),
-		luabind::def("say_link", (std::string(*)(const char*,bool))&lua_say_link),
-		luabind::def("say_link", (std::string(*)(const char*))&lua_say_link),
+		luabind::def("say_link", (std::string(*)(std::string))&lua_say_link),
+		luabind::def("say_link", (std::string(*)(std::string,bool))&lua_say_link),
+		luabind::def("say_link", (std::string(*)(std::string,bool,std::string))&lua_say_link),
 		luabind::def("set_rule", (void(*)(std::string, std::string))&lua_set_rule),
 		luabind::def("get_rule", (std::string(*)(std::string))&lua_get_rule),
 		luabind::def("get_data", (std::string(*)(std::string))&lua_get_data),
@@ -5490,14 +6103,14 @@ luabind::scope lua_register_general() {
 		luabind::def("seconds_to_time", &lua_seconds_to_time),
 		luabind::def("time_to_seconds", &lua_time_to_seconds),
 		luabind::def("get_hex_color_code", &lua_get_hex_color_code),
-		luabind::def("get_aa_exp_modifier_by_char_id", (double(*)(uint32,uint32))&lua_get_aa_exp_modifier_by_char_id),
-		luabind::def("get_aa_exp_modifier_by_char_id", (double(*)(uint32,uint32,int16))&lua_get_aa_exp_modifier_by_char_id),
-		luabind::def("get_exp_modifier_by_char_id", (double(*)(uint32,uint32))&lua_get_exp_modifier_by_char_id),
-		luabind::def("get_exp_modifier_by_char_id", (double(*)(uint32,uint32,int16))&lua_get_exp_modifier_by_char_id),
-		luabind::def("set_aa_exp_modifier_by_char_id", (void(*)(uint32,uint32,double))&lua_set_aa_exp_modifier_by_char_id),
-		luabind::def("set_aa_exp_modifier_by_char_id", (void(*)(uint32,uint32,double,int16))&lua_set_aa_exp_modifier_by_char_id),
-		luabind::def("set_exp_modifier_by_char_id", (void(*)(uint32,uint32,double))&lua_set_exp_modifier_by_char_id),
-		luabind::def("set_exp_modifier_by_char_id", (void(*)(uint32,uint32,double,int16))&lua_set_exp_modifier_by_char_id),
+		luabind::def("get_aa_exp_modifier_by_char_id", (float(*)(uint32,uint32))&lua_get_aa_exp_modifier_by_char_id),
+		luabind::def("get_aa_exp_modifier_by_char_id", (float(*)(uint32,uint32,int16))&lua_get_aa_exp_modifier_by_char_id),
+		luabind::def("get_exp_modifier_by_char_id", (float(*)(uint32,uint32))&lua_get_exp_modifier_by_char_id),
+		luabind::def("get_exp_modifier_by_char_id", (float(*)(uint32,uint32,int16))&lua_get_exp_modifier_by_char_id),
+		luabind::def("set_aa_exp_modifier_by_char_id", (void(*)(uint32,uint32,float))&lua_set_aa_exp_modifier_by_char_id),
+		luabind::def("set_aa_exp_modifier_by_char_id", (void(*)(uint32,uint32,float,int16))&lua_set_aa_exp_modifier_by_char_id),
+		luabind::def("set_exp_modifier_by_char_id", (void(*)(uint32,uint32,float))&lua_set_exp_modifier_by_char_id),
+		luabind::def("set_exp_modifier_by_char_id", (void(*)(uint32,uint32,float,int16))&lua_set_exp_modifier_by_char_id),
 		luabind::def("add_ldon_loss", &lua_add_ldon_loss),
 		luabind::def("add_ldon_points", &lua_add_ldon_points),
 		luabind::def("add_ldon_win", &lua_add_ldon_win),
@@ -5690,6 +6303,10 @@ luabind::scope lua_register_general() {
 		luabind::def("get_zone_lava_damage", (int(*)(uint32,int))&lua_get_zone_lava_damage),
 		luabind::def("get_zone_minimum_lava_damage", (int(*)(uint32))&lua_get_zone_minimum_lava_damage),
 		luabind::def("get_zone_minimum_lava_damage", (int(*)(uint32,int))&lua_get_zone_minimum_lava_damage),
+		luabind::def("get_zone_idle_when_empty", (uint8(*)(uint32))&lua_get_zone_idle_when_empty),
+		luabind::def("get_zone_idle_when_empty", (uint8(*)(uint32,int))&lua_get_zone_idle_when_empty),
+		luabind::def("get_zone_seconds_before_idle", (uint32(*)(uint32))&lua_get_zone_seconds_before_idle),
+		luabind::def("get_zone_seconds_before_idle", (uint32(*)(uint32,int))&lua_get_zone_seconds_before_idle),
 		luabind::def("send_channel_message", (void(*)(uint8,uint32,uint8,uint8,const char*))&lua_send_channel_message),
 		luabind::def("send_channel_message", (void(*)(Lua_Client,uint8,uint32,uint8,uint8,const char*))&lua_send_channel_message),
 		luabind::def("send_channel_message", (void(*)(Lua_Client,const char*,uint8,uint32,uint8,uint8,const char*))&lua_send_channel_message),
@@ -5814,6 +6431,29 @@ luabind::scope lua_register_general() {
 		luabind::def("get_spell_resurrection_sickness_check", &lua_get_spell_resurrection_sickness_check),
 		luabind::def("get_spell_nimbus_effect", &lua_get_spell_nimbus_effect),
 		luabind::def("convert_money_to_string", &lua_convert_money_to_string),
+		luabind::def("cast_spell", &lua_cast_spell),
+		luabind::def("self_cast", &lua_self_cast),
+		luabind::def("get_bot_class_by_id", &lua_get_bot_class_by_id),
+		luabind::def("get_bot_gender_by_id", &lua_get_bot_gender_by_id),
+		luabind::def("get_bot_ids_by_character_id", (luabind::object(*)(lua_State*, uint32))&lua_get_bot_ids_by_character_id),
+		luabind::def("get_bot_ids_by_character_id", (luabind::object(*)(lua_State*, uint32,uint8))&lua_get_bot_ids_by_character_id),
+		luabind::def("get_bot_level_by_id", &lua_get_bot_level_by_id),
+		luabind::def("get_bot_name_by_id", &lua_get_bot_name_by_id),
+		luabind::def("get_bot_race_by_id", &lua_get_bot_race_by_id),
+		luabind::def("silent_say_link", (std::string(*)(std::string))&lua_silent_say_link),
+		luabind::def("silent_say_link", (std::string(*)(std::string,std::string))&lua_silent_say_link),
+		luabind::def("get_class_bitmask", &lua_get_class_bitmask),
+		luabind::def("get_deity_bitmask", &lua_get_deity_bitmask),
+		luabind::def("get_race_bitmask", &lua_get_race_bitmask),
+		luabind::def("get_auto_login_character_name_by_account_id", &lua_get_auto_login_character_name_by_account_id),
+		luabind::def("set_auto_login_character_name_by_account_id", &lua_set_auto_login_character_name_by_account_id),
+		luabind::def("get_zone_id_by_long_name", &lua_get_zone_id_by_long_name),
+		luabind::def("get_zone_short_name_by_long_name", &lua_get_zone_short_name_by_long_name),
+		luabind::def("send_parcel", &lua_send_parcel),
+		luabind::def("get_zone_uptime", &lua_get_zone_uptime),
+		luabind::def("are_tasks_completed", &lua_are_tasks_completed),
+		luabind::def("spawn_circle", &lua_spawn_circle),
+		luabind::def("spawn_grid", &lua_spawn_grid),
 		/*
 			Cross Zone
 		*/
@@ -5889,18 +6529,42 @@ luabind::scope lua_register_general() {
 		luabind::def("cross_zone_message_player_by_guild_id", &lua_cross_zone_message_player_by_guild_id),
 		luabind::def("cross_zone_message_player_by_expedition_id", &lua_cross_zone_message_player_by_expedition_id),
 		luabind::def("cross_zone_message_player_by_name", &lua_cross_zone_message_player_by_name),
-		luabind::def("cross_zone_move_player_by_char_id", &lua_cross_zone_move_player_by_char_id),
-		luabind::def("cross_zone_move_player_by_group_id", &lua_cross_zone_move_player_by_group_id),
-		luabind::def("cross_zone_move_player_by_raid_id", &lua_cross_zone_move_player_by_raid_id),
-		luabind::def("cross_zone_move_player_by_guild_id", &lua_cross_zone_move_player_by_guild_id),
-		luabind::def("cross_zone_move_player_by_expedition_id", &lua_cross_zone_move_player_by_expedition_id),
-		luabind::def("cross_zone_move_player_by_client_name", &lua_cross_zone_move_player_by_client_name),
-		luabind::def("cross_zone_move_instance_by_char_id", &lua_cross_zone_move_instance_by_char_id),
-		luabind::def("cross_zone_move_instance_by_group_id", &lua_cross_zone_move_instance_by_group_id),
-		luabind::def("cross_zone_move_instance_by_raid_id", &lua_cross_zone_move_instance_by_raid_id),
-		luabind::def("cross_zone_move_instance_by_guild_id", &lua_cross_zone_move_instance_by_guild_id),
-		luabind::def("cross_zone_move_instance_by_expedition_id", &lua_cross_zone_move_instance_by_expedition_id),
-		luabind::def("cross_zone_move_instance_by_client_name", &lua_cross_zone_move_instance_by_client_name),
+		luabind::def("cross_zone_move_player_by_char_id", (void(*)(uint32,std::string))&lua_cross_zone_move_player_by_char_id),
+		luabind::def("cross_zone_move_player_by_char_id", (void(*)(uint32,std::string,float,float,float))&lua_cross_zone_move_player_by_char_id),
+		luabind::def("cross_zone_move_player_by_char_id", (void(*)(uint32,std::string,float,float,float,float))&lua_cross_zone_move_player_by_char_id),
+		luabind::def("cross_zone_move_player_by_group_id", (void(*)(uint32,std::string))&lua_cross_zone_move_player_by_group_id),
+		luabind::def("cross_zone_move_player_by_group_id", (void(*)(uint32,std::string,float,float,float))&lua_cross_zone_move_player_by_group_id),
+		luabind::def("cross_zone_move_player_by_group_id", (void(*)(uint32,std::string,float,float,float,float))&lua_cross_zone_move_player_by_group_id),
+		luabind::def("cross_zone_move_player_by_raid_id", (void(*)(uint32,std::string))&lua_cross_zone_move_player_by_raid_id),
+		luabind::def("cross_zone_move_player_by_raid_id", (void(*)(uint32,std::string,float,float,float))&lua_cross_zone_move_player_by_raid_id),
+		luabind::def("cross_zone_move_player_by_raid_id", (void(*)(uint32,std::string,float,float,float,float))&lua_cross_zone_move_player_by_raid_id),
+		luabind::def("cross_zone_move_player_by_guild_id", (void(*)(uint32,std::string))&lua_cross_zone_move_player_by_guild_id),
+		luabind::def("cross_zone_move_player_by_guild_id", (void(*)(uint32,std::string,float,float,float))&lua_cross_zone_move_player_by_guild_id),
+		luabind::def("cross_zone_move_player_by_guild_id", (void(*)(uint32,std::string,float,float,float,float))&lua_cross_zone_move_player_by_guild_id),
+		luabind::def("cross_zone_move_player_by_expedition_id", (void(*)(uint32,std::string))&lua_cross_zone_move_player_by_expedition_id),
+		luabind::def("cross_zone_move_player_by_expedition_id", (void(*)(uint32,std::string,float,float,float))&lua_cross_zone_move_player_by_expedition_id),
+		luabind::def("cross_zone_move_player_by_expedition_id", (void(*)(uint32,std::string,float,float,float,float))&lua_cross_zone_move_player_by_expedition_id),
+		luabind::def("cross_zone_move_player_by_client_name", (void(*)(std::string,std::string))&lua_cross_zone_move_player_by_client_name),
+		luabind::def("cross_zone_move_player_by_client_name", (void(*)(std::string,std::string,float,float,float))&lua_cross_zone_move_player_by_client_name),
+		luabind::def("cross_zone_move_player_by_client_name", (void(*)(std::string,std::string,float,float,float,float))&lua_cross_zone_move_player_by_client_name),
+		luabind::def("cross_zone_move_instance_by_char_id", (void(*)(uint32,uint16))&lua_cross_zone_move_instance_by_char_id),
+		luabind::def("cross_zone_move_instance_by_char_id", (void(*)(uint32,uint16,float,float,float))&lua_cross_zone_move_instance_by_char_id),
+		luabind::def("cross_zone_move_instance_by_char_id", (void(*)(uint32,uint16,float,float,float,float))&lua_cross_zone_move_instance_by_char_id),
+		luabind::def("cross_zone_move_instance_by_group_id", (void(*)(uint32,uint16))&lua_cross_zone_move_instance_by_group_id),
+		luabind::def("cross_zone_move_instance_by_group_id", (void(*)(uint32,uint16,float,float,float))&lua_cross_zone_move_instance_by_group_id),
+		luabind::def("cross_zone_move_instance_by_group_id", (void(*)(uint32,uint16,float,float,float,float))&lua_cross_zone_move_instance_by_group_id),
+		luabind::def("cross_zone_move_instance_by_raid_id", (void(*)(uint32,uint16))&lua_cross_zone_move_instance_by_raid_id),
+		luabind::def("cross_zone_move_instance_by_raid_id", (void(*)(uint32,uint16,float,float,float))&lua_cross_zone_move_instance_by_raid_id),
+		luabind::def("cross_zone_move_instance_by_raid_id", (void(*)(uint32,uint16,float,float,float,float))&lua_cross_zone_move_instance_by_raid_id),
+		luabind::def("cross_zone_move_instance_by_guild_id", (void(*)(uint32,uint16))&lua_cross_zone_move_instance_by_guild_id),
+		luabind::def("cross_zone_move_instance_by_guild_id", (void(*)(uint32,uint16,float,float,float))&lua_cross_zone_move_instance_by_guild_id),
+		luabind::def("cross_zone_move_instance_by_guild_id", (void(*)(uint32,uint16,float,float,float,float))&lua_cross_zone_move_instance_by_guild_id),
+		luabind::def("cross_zone_move_instance_by_expedition_id", (void(*)(uint32,uint16))&lua_cross_zone_move_instance_by_expedition_id),
+		luabind::def("cross_zone_move_instance_by_expedition_id", (void(*)(uint32,uint16,float,float,float))&lua_cross_zone_move_instance_by_expedition_id),
+		luabind::def("cross_zone_move_instance_by_expedition_id", (void(*)(uint32,uint16,float,float,float,float))&lua_cross_zone_move_instance_by_expedition_id),
+		luabind::def("cross_zone_move_instance_by_client_name", (void(*)(std::string,uint16))&lua_cross_zone_move_instance_by_client_name),
+		luabind::def("cross_zone_move_instance_by_client_name", (void(*)(std::string,uint16,float,float,float))&lua_cross_zone_move_instance_by_client_name),
+		luabind::def("cross_zone_move_instance_by_client_name", (void(*)(std::string,uint16,float,float,float,float))&lua_cross_zone_move_instance_by_client_name),
 		luabind::def("cross_zone_remove_ldon_loss_by_char_id", &lua_cross_zone_remove_ldon_loss_by_char_id),
 		luabind::def("cross_zone_remove_ldon_loss_by_group_id", &lua_cross_zone_remove_ldon_loss_by_group_id),
 		luabind::def("cross_zone_remove_ldon_loss_by_raid_id", &lua_cross_zone_remove_ldon_loss_by_raid_id),
@@ -5931,7 +6595,7 @@ luabind::scope lua_register_general() {
 		luabind::def("cross_zone_reset_activity_by_guild_id", &lua_cross_zone_reset_activity_by_guild_id),
 		luabind::def("cross_zone_reset_activity_by_expedition_id", &lua_cross_zone_reset_activity_by_expedition_id),
 		luabind::def("cross_zone_reset_activity_by_client_name", &lua_cross_zone_reset_activity_by_client_name),
-		luabind::def("cross_zone_set_entity_variable_by_client_name", &lua_cross_zone_set_entity_variable_by_client_name),
+		luabind::def("cross_zone_set_entity_variable_by_char_id", &lua_cross_zone_set_entity_variable_by_char_id),
 		luabind::def("cross_zone_set_entity_variable_by_group_id", &lua_cross_zone_set_entity_variable_by_group_id),
 		luabind::def("cross_zone_set_entity_variable_by_raid_id", &lua_cross_zone_set_entity_variable_by_raid_id),
 		luabind::def("cross_zone_set_entity_variable_by_guild_id", &lua_cross_zone_set_entity_variable_by_guild_id),
@@ -6120,7 +6784,6 @@ luabind::scope lua_register_random() {
 		)];
 }
 
-
 luabind::scope lua_register_events() {
 	return luabind::class_<Events>("Event")
 		.enum_("constants")
@@ -6179,7 +6842,6 @@ luabind::scope lua_register_events() {
 			luabind::value("discover_item", static_cast<int>(EVENT_DISCOVER_ITEM)),
 			luabind::value("disconnect", static_cast<int>(EVENT_DISCONNECT)),
 			luabind::value("connect", static_cast<int>(EVENT_CONNECT)),
-			luabind::value("item_tick", static_cast<int>(EVENT_ITEM_TICK)),
 			luabind::value("duel_win", static_cast<int>(EVENT_DUEL_WIN)),
 			luabind::value("duel_lose", static_cast<int>(EVENT_DUEL_LOSE)),
 			luabind::value("encounter_load", static_cast<int>(EVENT_ENCOUNTER_LOAD)),
@@ -6241,7 +6903,23 @@ luabind::scope lua_register_events() {
 			luabind::value("memorize_spell", static_cast<int>(EVENT_MEMORIZE_SPELL)),
 			luabind::value("unmemorize_spell", static_cast<int>(EVENT_UNMEMORIZE_SPELL)),
 			luabind::value("scribe_spell", static_cast<int>(EVENT_SCRIBE_SPELL)),
-			luabind::value("unscribe_spell", static_cast<int>(EVENT_UNSCRIBE_SPELL))
+			luabind::value("unscribe_spell", static_cast<int>(EVENT_UNSCRIBE_SPELL)),
+			luabind::value("loot_added", static_cast<int>(EVENT_LOOT_ADDED)),
+			luabind::value("ldon_points_gain", static_cast<int>(EVENT_LDON_POINTS_GAIN)),
+			luabind::value("ldon_points_loss", static_cast<int>(EVENT_LDON_POINTS_LOSS)),
+			luabind::value("alt_currency_gain", static_cast<int>(EVENT_ALT_CURRENCY_GAIN)),
+			luabind::value("alt_currency_loss", static_cast<int>(EVENT_ALT_CURRENCY_LOSS)),
+			luabind::value("crystal_gain", static_cast<int>(EVENT_CRYSTAL_GAIN)),
+			luabind::value("crystal_loss", static_cast<int>(EVENT_CRYSTAL_LOSS)),
+			luabind::value("timer_pause", static_cast<int>(EVENT_TIMER_PAUSE)),
+			luabind::value("timer_resume", static_cast<int>(EVENT_TIMER_RESUME)),
+			luabind::value("timer_start", static_cast<int>(EVENT_TIMER_START)),
+			luabind::value("timer_stop", static_cast<int>(EVENT_TIMER_STOP)),
+			luabind::value("entity_variable_delete", static_cast<int>(EVENT_ENTITY_VARIABLE_DELETE)),
+			luabind::value("entity_variable_set", static_cast<int>(EVENT_ENTITY_VARIABLE_SET)),
+			luabind::value("entity_variable_update", static_cast<int>(EVENT_ENTITY_VARIABLE_UPDATE)),
+			luabind::value("aa_loss", static_cast<int>(EVENT_AA_LOSS)),
+			luabind::value("read", static_cast<int>(EVENT_READ_ITEM))
 		)];
 }
 
@@ -6410,51 +7088,52 @@ luabind::scope lua_register_classes() {
 	return luabind::class_<Classes>("Class")
 		.enum_("constants")
 		[(
-			luabind::value("WARRIOR", WARRIOR),
-			luabind::value("CLERIC", CLERIC),
-			luabind::value("PALADIN", PALADIN),
-			luabind::value("RANGER", RANGER),
-			luabind::value("SHADOWKNIGHT", SHADOWKNIGHT),
-			luabind::value("DRUID", DRUID),
-			luabind::value("MONK", MONK),
-			luabind::value("BARD", BARD),
-			luabind::value("ROGUE", ROGUE),
-			luabind::value("SHAMAN", SHAMAN),
-			luabind::value("NECROMANCER", NECROMANCER),
-			luabind::value("WIZARD", WIZARD),
-			luabind::value("MAGICIAN", MAGICIAN),
-			luabind::value("ENCHANTER", ENCHANTER),
-			luabind::value("BEASTLORD", BEASTLORD),
-			luabind::value("BERSERKER", BERSERKER),
-			luabind::value("WARRIORGM", WARRIORGM),
-			luabind::value("CLERICGM", CLERICGM),
-			luabind::value("PALADINGM", PALADINGM),
-			luabind::value("RANGERGM", RANGERGM),
-			luabind::value("SHADOWKNIGHTGM", SHADOWKNIGHTGM),
-			luabind::value("DRUIDGM", DRUIDGM),
-			luabind::value("MONKGM", MONKGM),
-			luabind::value("BARDGM", BARDGM),
-			luabind::value("ROGUEGM", ROGUEGM),
-			luabind::value("SHAMANGM", SHAMANGM),
-			luabind::value("NECROMANCERGM", NECROMANCERGM),
-			luabind::value("WIZARDGM", WIZARDGM),
-			luabind::value("MAGICIANGM", MAGICIANGM),
-			luabind::value("ENCHANTERGM", ENCHANTERGM),
-			luabind::value("BEASTLORDGM", BEASTLORDGM),
-			luabind::value("BERSERKERGM", BERSERKERGM),
-			luabind::value("BANKER", BANKER),
-			luabind::value("MERCHANT", MERCHANT),
-			luabind::value("DISCORD_MERCHANT", DISCORD_MERCHANT),
-			luabind::value("ADVENTURE_RECRUITER", ADVENTURE_RECRUITER),
-			luabind::value("ADVENTURE_MERCHANT", ADVENTURE_MERCHANT),
-			luabind::value("LDON_TREASURE", LDON_TREASURE),
-			luabind::value("TRIBUTE_MASTER", TRIBUTE_MASTER),
-			luabind::value("GUILD_TRIBUTE_MASTER", GUILD_TRIBUTE_MASTER),
-			luabind::value("NORRATHS_KEEPERS_MERCHANT", NORRATHS_KEEPERS_MERCHANT),
-			luabind::value("DARK_REIGN_MERCHANT", DARK_REIGN_MERCHANT),
-			luabind::value("FELLOWSHIP_MASTER", FELLOWSHIP_MASTER),
-			luabind::value("ALT_CURRENCY_MERCHANT", ALT_CURRENCY_MERCHANT),
-			luabind::value("MERCENARY_MASTER", MERCENARY_MASTER)
+			luabind::value("WARRIOR", Class::Warrior),
+			luabind::value("CLERIC", Class::Cleric),
+			luabind::value("PALADIN", Class::Paladin),
+			luabind::value("RANGER", Class::Ranger),
+			luabind::value("SHADOWKNIGHT", Class::ShadowKnight),
+			luabind::value("DRUID", Class::Druid),
+			luabind::value("MONK", Class::Monk),
+			luabind::value("BARD", Class::Bard),
+			luabind::value("ROGUE", Class::Rogue),
+			luabind::value("SHAMAN", Class::Shaman),
+			luabind::value("NECROMANCER", Class::Necromancer),
+			luabind::value("WIZARD", Class::Wizard),
+			luabind::value("MAGICIAN", Class::Magician),
+			luabind::value("ENCHANTER", Class::Enchanter),
+			luabind::value("BEASTLORD", Class::Beastlord),
+			luabind::value("BERSERKER", Class::Berserker),
+			luabind::value("WARRIORGM", Class::WarriorGM),
+			luabind::value("CLERICGM", Class::ClericGM),
+			luabind::value("PALADINGM", Class::PaladinGM),
+			luabind::value("RANGERGM", Class::RangerGM),
+			luabind::value("SHADOWKNIGHTGM", Class::ShadowKnightGM),
+			luabind::value("DRUIDGM", Class::DruidGM),
+			luabind::value("MONKGM", Class::MonkGM),
+			luabind::value("BARDGM", Class::BardGM),
+			luabind::value("ROGUEGM", Class::RogueGM),
+			luabind::value("SHAMANGM", Class::ShamanGM),
+			luabind::value("NECROMANCERGM", Class::NecromancerGM),
+			luabind::value("WIZARDGM", Class::WizardGM),
+			luabind::value("MAGICIANGM", Class::MagicianGM),
+			luabind::value("ENCHANTERGM", Class::EnchanterGM),
+			luabind::value("BEASTLORDGM", Class::BeastlordGM),
+			luabind::value("BERSERKERGM", Class::BerserkerGM),
+			luabind::value("BANKER", Class::Banker),
+			luabind::value("MERCHANT", Class::Merchant),
+			luabind::value("DISCORD_MERCHANT", Class::DiscordMerchant),
+			luabind::value("ADVENTURE_RECRUITER", Class::AdventureRecruiter),
+			luabind::value("ADVENTURE_MERCHANT", Class::AdventureMerchant),
+			luabind::value("LDON_TREASURE", Class::LDoNTreasure),
+			luabind::value("TRIBUTE_MASTER", Class::TributeMaster),
+			luabind::value("GUILD_TRIBUTE_MASTER", Class::GuildTributeMaster),
+			luabind::value("GUILD_BANKER", Class::GuildBanker),
+			luabind::value("NORRATHS_KEEPERS_MERCHANT", Class::NorrathsKeepersMerchant),
+			luabind::value("DARK_REIGN_MERCHANT", Class::DarkReignMerchant),
+			luabind::value("FELLOWSHIP_MASTER", Class::FellowshipMaster),
+			luabind::value("ALT_CURRENCY_MERCHANT", Class::AlternateCurrencyMerchant),
+			luabind::value("MERCENARY_MASTER", Class::MercenaryLiaison)
 		)];
 }
 
@@ -6621,10 +7300,10 @@ luabind::scope lua_register_filters() {
 			luabind::value("FocusEffects", FilterFocusEffects),
 			luabind::value("PetSpells", FilterPetSpells),
 			luabind::value("HealOverTime", FilterHealOverTime),
-			luabind::value("Unknown25", FilterUnknown25),
-			luabind::value("Unknown26", FilterUnknown26),
-			luabind::value("Unknown27", FilterUnknown27),
-			luabind::value("Unknown28", FilterUnknown28)
+			luabind::value("ItemSpeech", FilterItemSpeech),
+			luabind::value("Strikethrough", FilterStrikethrough),
+			luabind::value("Stuns", FilterStuns),
+			luabind::value("BardSongsOnPets", FilterBardSongsOnPets)
 		)];
 }
 
@@ -6738,6 +7417,530 @@ luabind::scope lua_register_message_types() {
 	)];
 }
 
+luabind::scope lua_register_zone_types() {
+	return luabind::class_<ZoneIDs>("Zone")
+		.enum_("constants")
+		[(
+			luabind::value("qeynos", Zones::QEYNOS),
+			luabind::value("qeynos2", Zones::QEYNOS2),
+			luabind::value("qrg", Zones::QRG),
+			luabind::value("qeytoqrg", Zones::QEYTOQRG),
+			luabind::value("highpass", Zones::HIGHPASS),
+			luabind::value("highkeep", Zones::HIGHKEEP),
+			luabind::value("freportn", Zones::FREPORTN),
+			luabind::value("freportw", Zones::FREPORTW),
+			luabind::value("freporte", Zones::FREPORTE),
+			luabind::value("runnyeye", Zones::RUNNYEYE),
+			luabind::value("qey2hh1", Zones::QEY2HH1),
+			luabind::value("northkarana", Zones::NORTHKARANA),
+			luabind::value("southkarana", Zones::SOUTHKARANA),
+			luabind::value("eastkarana", Zones::EASTKARANA),
+			luabind::value("beholder", Zones::BEHOLDER),
+			luabind::value("blackburrow", Zones::BLACKBURROW),
+			luabind::value("paw", Zones::PAW),
+			luabind::value("rivervale", Zones::RIVERVALE),
+			luabind::value("kithicor", Zones::KITHICOR),
+			luabind::value("commons", Zones::COMMONS),
+			luabind::value("ecommons", Zones::ECOMMONS),
+			luabind::value("erudnint", Zones::ERUDNINT),
+			luabind::value("erudnext", Zones::ERUDNEXT),
+			luabind::value("nektulos", Zones::NEKTULOS),
+			luabind::value("cshome", Zones::CSHOME),
+			luabind::value("lavastorm", Zones::LAVASTORM),
+			luabind::value("nektropos", Zones::NEKTROPOS),
+			luabind::value("halas", Zones::HALAS),
+			luabind::value("everfrost", Zones::EVERFROST),
+			luabind::value("soldunga", Zones::SOLDUNGA),
+			luabind::value("soldungb", Zones::SOLDUNGB),
+			luabind::value("misty", Zones::MISTY),
+			luabind::value("nro", Zones::NRO),
+			luabind::value("sro", Zones::SRO),
+			luabind::value("befallen", Zones::BEFALLEN),
+			luabind::value("oasis", Zones::OASIS),
+			luabind::value("tox", Zones::TOX),
+			luabind::value("hole", Zones::HOLE),
+			luabind::value("neriaka", Zones::NERIAKA),
+			luabind::value("neriakb", Zones::NERIAKB),
+			luabind::value("neriakc", Zones::NERIAKC),
+			luabind::value("neriakd", Zones::NERIAKD),
+			luabind::value("najena", Zones::NAJENA),
+			luabind::value("qcat", Zones::QCAT),
+			luabind::value("innothule", Zones::INNOTHULE),
+			luabind::value("feerrott", Zones::FEERROTT),
+			luabind::value("cazicthule", Zones::CAZICTHULE),
+			luabind::value("oggok", Zones::OGGOK),
+			luabind::value("rathemtn", Zones::RATHEMTN),
+			luabind::value("lakerathe", Zones::LAKERATHE),
+			luabind::value("grobb", Zones::GROBB),
+			luabind::value("aviak", Zones::AVIAK),
+			luabind::value("gfaydark", Zones::GFAYDARK),
+			luabind::value("akanon", Zones::AKANON),
+			luabind::value("steamfont", Zones::STEAMFONT),
+			luabind::value("lfaydark", Zones::LFAYDARK),
+			luabind::value("crushbone", Zones::CRUSHBONE),
+			luabind::value("mistmoore", Zones::MISTMOORE),
+			luabind::value("kaladima", Zones::KALADIMA),
+			luabind::value("felwithea", Zones::FELWITHEA),
+			luabind::value("felwitheb", Zones::FELWITHEB),
+			luabind::value("unrest", Zones::UNREST),
+			luabind::value("kedge", Zones::KEDGE),
+			luabind::value("guktop", Zones::GUKTOP),
+			luabind::value("gukbottom", Zones::GUKBOTTOM),
+			luabind::value("kaladimb", Zones::KALADIMB),
+			luabind::value("butcher", Zones::BUTCHER),
+			luabind::value("oot", Zones::OOT),
+			luabind::value("cauldron", Zones::CAULDRON),
+			luabind::value("airplane", Zones::AIRPLANE),
+			luabind::value("fearplane", Zones::FEARPLANE),
+			luabind::value("permafrost", Zones::PERMAFROST),
+			luabind::value("kerraridge", Zones::KERRARIDGE),
+			luabind::value("paineel", Zones::PAINEEL),
+			luabind::value("hateplane", Zones::HATEPLANE),
+			luabind::value("arena", Zones::ARENA),
+			luabind::value("fieldofbone", Zones::FIELDOFBONE),
+			luabind::value("warslikswood", Zones::WARSLIKSWOOD),
+			luabind::value("soltemple", Zones::SOLTEMPLE),
+			luabind::value("droga", Zones::DROGA),
+			luabind::value("cabwest", Zones::CABWEST),
+			luabind::value("swampofnohope", Zones::SWAMPOFNOHOPE),
+			luabind::value("firiona", Zones::FIRIONA),
+			luabind::value("lakeofillomen", Zones::LAKEOFILLOMEN),
+			luabind::value("dreadlands", Zones::DREADLANDS),
+			luabind::value("burningwood", Zones::BURNINGWOOD),
+			luabind::value("kaesora", Zones::KAESORA),
+			luabind::value("sebilis", Zones::SEBILIS),
+			luabind::value("citymist", Zones::CITYMIST),
+			luabind::value("skyfire", Zones::SKYFIRE),
+			luabind::value("frontiermtns", Zones::FRONTIERMTNS),
+			luabind::value("overthere", Zones::OVERTHERE),
+			luabind::value("emeraldjungle", Zones::EMERALDJUNGLE),
+			luabind::value("trakanon", Zones::TRAKANON),
+			luabind::value("timorous", Zones::TIMOROUS),
+			luabind::value("kurn", Zones::KURN),
+			luabind::value("erudsxing", Zones::ERUDSXING),
+			luabind::value("stonebrunt", Zones::STONEBRUNT),
+			luabind::value("warrens", Zones::WARRENS),
+			luabind::value("karnor", Zones::KARNOR),
+			luabind::value("chardok", Zones::CHARDOK),
+			luabind::value("dalnir", Zones::DALNIR),
+			luabind::value("charasis", Zones::CHARASIS),
+			luabind::value("cabeast", Zones::CABEAST),
+			luabind::value("nurga", Zones::NURGA),
+			luabind::value("veeshan", Zones::VEESHAN),
+			luabind::value("veksar", Zones::VEKSAR),
+			luabind::value("iceclad", Zones::ICECLAD),
+			luabind::value("frozenshadow", Zones::FROZENSHADOW),
+			luabind::value("velketor", Zones::VELKETOR),
+			luabind::value("kael", Zones::KAEL),
+			luabind::value("skyshrine", Zones::SKYSHRINE),
+			luabind::value("thurgadina", Zones::THURGADINA),
+			luabind::value("eastwastes", Zones::EASTWASTES),
+			luabind::value("cobaltscar", Zones::COBALTSCAR),
+			luabind::value("greatdivide", Zones::GREATDIVIDE),
+			luabind::value("wakening", Zones::WAKENING),
+			luabind::value("westwastes", Zones::WESTWASTES),
+			luabind::value("crystal", Zones::CRYSTAL),
+			luabind::value("necropolis", Zones::NECROPOLIS),
+			luabind::value("templeveeshan", Zones::TEMPLEVEESHAN),
+			luabind::value("sirens", Zones::SIRENS),
+			luabind::value("mischiefplane", Zones::MISCHIEFPLANE),
+			luabind::value("growthplane", Zones::GROWTHPLANE),
+			luabind::value("sleeper", Zones::SLEEPER),
+			luabind::value("thurgadinb", Zones::THURGADINB),
+			luabind::value("erudsxing2", Zones::ERUDSXING2),
+			luabind::value("shadowhaven", Zones::SHADOWHAVEN),
+			luabind::value("bazaar", Zones::BAZAAR),
+			luabind::value("nexus", Zones::NEXUS),
+			luabind::value("echo_", Zones::ECHO_),
+			luabind::value("acrylia", Zones::ACRYLIA),
+			luabind::value("sharvahl", Zones::SHARVAHL),
+			luabind::value("paludal", Zones::PALUDAL),
+			luabind::value("fungusgrove", Zones::FUNGUSGROVE),
+			luabind::value("vexthal", Zones::VEXTHAL),
+			luabind::value("sseru", Zones::SSERU),
+			luabind::value("katta", Zones::KATTA),
+			luabind::value("netherbian", Zones::NETHERBIAN),
+			luabind::value("ssratemple", Zones::SSRATEMPLE),
+			luabind::value("griegsend", Zones::GRIEGSEND),
+			luabind::value("thedeep", Zones::THEDEEP),
+			luabind::value("shadeweaver", Zones::SHADEWEAVER),
+			luabind::value("hollowshade", Zones::HOLLOWSHADE),
+			luabind::value("grimling", Zones::GRIMLING),
+			luabind::value("mseru", Zones::MSERU),
+			luabind::value("letalis", Zones::LETALIS),
+			luabind::value("twilight", Zones::TWILIGHT),
+			luabind::value("thegrey", Zones::THEGREY),
+			luabind::value("tenebrous", Zones::TENEBROUS),
+			luabind::value("maiden", Zones::MAIDEN),
+			luabind::value("dawnshroud", Zones::DAWNSHROUD),
+			luabind::value("scarlet", Zones::SCARLET),
+			luabind::value("umbral", Zones::UMBRAL),
+			luabind::value("akheva", Zones::AKHEVA),
+			luabind::value("arena2", Zones::ARENA2),
+			luabind::value("jaggedpine", Zones::JAGGEDPINE),
+			luabind::value("nedaria", Zones::NEDARIA),
+			luabind::value("tutorial", Zones::TUTORIAL),
+			luabind::value("load", Zones::LOAD),
+			luabind::value("load2", Zones::LOAD2),
+			luabind::value("hateplaneb", Zones::HATEPLANEB),
+			luabind::value("shadowrest", Zones::SHADOWREST),
+			luabind::value("tutoriala", Zones::TUTORIALA),
+			luabind::value("tutorialb", Zones::TUTORIALB),
+			luabind::value("clz", Zones::CLZ),
+			luabind::value("codecay", Zones::CODECAY),
+			luabind::value("pojustice", Zones::POJUSTICE),
+			luabind::value("poknowledge", Zones::POKNOWLEDGE),
+			luabind::value("potranquility", Zones::POTRANQUILITY),
+			luabind::value("ponightmare", Zones::PONIGHTMARE),
+			luabind::value("podisease", Zones::PODISEASE),
+			luabind::value("poinnovation", Zones::POINNOVATION),
+			luabind::value("potorment", Zones::POTORMENT),
+			luabind::value("povalor", Zones::POVALOR),
+			luabind::value("bothunder", Zones::BOTHUNDER),
+			luabind::value("postorms", Zones::POSTORMS),
+			luabind::value("hohonora", Zones::HOHONORA),
+			luabind::value("solrotower", Zones::SOLROTOWER),
+			luabind::value("powar", Zones::POWAR),
+			luabind::value("potactics", Zones::POTACTICS),
+			luabind::value("poair", Zones::POAIR),
+			luabind::value("powater", Zones::POWATER),
+			luabind::value("pofire", Zones::POFIRE),
+			luabind::value("poeartha", Zones::POEARTHA),
+			luabind::value("potimea", Zones::POTIMEA),
+			luabind::value("hohonorb", Zones::HOHONORB),
+			luabind::value("nightmareb", Zones::NIGHTMAREB),
+			luabind::value("poearthb", Zones::POEARTHB),
+			luabind::value("potimeb", Zones::POTIMEB),
+			luabind::value("gunthak", Zones::GUNTHAK),
+			luabind::value("dulak", Zones::DULAK),
+			luabind::value("torgiran", Zones::TORGIRAN),
+			luabind::value("nadox", Zones::NADOX),
+			luabind::value("hatesfury", Zones::HATESFURY),
+			luabind::value("guka", Zones::GUKA),
+			luabind::value("ruja", Zones::RUJA),
+			luabind::value("taka", Zones::TAKA),
+			luabind::value("mira", Zones::MIRA),
+			luabind::value("mmca", Zones::MMCA),
+			luabind::value("gukb", Zones::GUKB),
+			luabind::value("rujb", Zones::RUJB),
+			luabind::value("takb", Zones::TAKB),
+			luabind::value("mirb", Zones::MIRB),
+			luabind::value("mmcb", Zones::MMCB),
+			luabind::value("gukc", Zones::GUKC),
+			luabind::value("rujc", Zones::RUJC),
+			luabind::value("takc", Zones::TAKC),
+			luabind::value("mirc", Zones::MIRC),
+			luabind::value("mmcc", Zones::MMCC),
+			luabind::value("gukd", Zones::GUKD),
+			luabind::value("rujd", Zones::RUJD),
+			luabind::value("takd", Zones::TAKD),
+			luabind::value("mird", Zones::MIRD),
+			luabind::value("mmcd", Zones::MMCD),
+			luabind::value("guke", Zones::GUKE),
+			luabind::value("ruje", Zones::RUJE),
+			luabind::value("take", Zones::TAKE),
+			luabind::value("mire", Zones::MIRE),
+			luabind::value("mmce", Zones::MMCE),
+			luabind::value("gukf", Zones::GUKF),
+			luabind::value("rujf", Zones::RUJF),
+			luabind::value("takf", Zones::TAKF),
+			luabind::value("mirf", Zones::MIRF),
+			luabind::value("mmcf", Zones::MMCF),
+			luabind::value("gukg", Zones::GUKG),
+			luabind::value("rujg", Zones::RUJG),
+			luabind::value("takg", Zones::TAKG),
+			luabind::value("mirg", Zones::MIRG),
+			luabind::value("mmcg", Zones::MMCG),
+			luabind::value("gukh", Zones::GUKH),
+			luabind::value("rujh", Zones::RUJH),
+			luabind::value("takh", Zones::TAKH),
+			luabind::value("mirh", Zones::MIRH),
+			luabind::value("mmch", Zones::MMCH),
+			luabind::value("ruji", Zones::RUJI),
+			luabind::value("taki", Zones::TAKI),
+			luabind::value("miri", Zones::MIRI),
+			luabind::value("mmci", Zones::MMCI),
+			luabind::value("rujj", Zones::RUJJ),
+			luabind::value("takj", Zones::TAKJ),
+			luabind::value("mirj", Zones::MIRJ),
+			luabind::value("mmcj", Zones::MMCJ),
+			luabind::value("chardokb", Zones::CHARDOKB),
+			luabind::value("soldungc", Zones::SOLDUNGC),
+			luabind::value("abysmal", Zones::ABYSMAL),
+			luabind::value("natimbi", Zones::NATIMBI),
+			luabind::value("qinimi", Zones::QINIMI),
+			luabind::value("riwwi", Zones::RIWWI),
+			luabind::value("barindu", Zones::BARINDU),
+			luabind::value("ferubi", Zones::FERUBI),
+			luabind::value("snpool", Zones::SNPOOL),
+			luabind::value("snlair", Zones::SNLAIR),
+			luabind::value("snplant", Zones::SNPLANT),
+			luabind::value("sncrematory", Zones::SNCREMATORY),
+			luabind::value("tipt", Zones::TIPT),
+			luabind::value("vxed", Zones::VXED),
+			luabind::value("yxtta", Zones::YXTTA),
+			luabind::value("uqua", Zones::UQUA),
+			luabind::value("kodtaz", Zones::KODTAZ),
+			luabind::value("ikkinz", Zones::IKKINZ),
+			luabind::value("qvic", Zones::QVIC),
+			luabind::value("inktuta", Zones::INKTUTA),
+			luabind::value("txevu", Zones::TXEVU),
+			luabind::value("tacvi", Zones::TACVI),
+			luabind::value("qvicb", Zones::QVICB),
+			luabind::value("wallofslaughter", Zones::WALLOFSLAUGHTER),
+			luabind::value("bloodfields", Zones::BLOODFIELDS),
+			luabind::value("draniksscar", Zones::DRANIKSSCAR),
+			luabind::value("causeway", Zones::CAUSEWAY),
+			luabind::value("chambersa", Zones::CHAMBERSA),
+			luabind::value("chambersb", Zones::CHAMBERSB),
+			luabind::value("chambersc", Zones::CHAMBERSC),
+			luabind::value("chambersd", Zones::CHAMBERSD),
+			luabind::value("chamberse", Zones::CHAMBERSE),
+			luabind::value("chambersf", Zones::CHAMBERSF),
+			luabind::value("provinggrounds", Zones::PROVINGGROUNDS),
+			luabind::value("anguish", Zones::ANGUISH),
+			luabind::value("dranikhollowsa", Zones::DRANIKHOLLOWSA),
+			luabind::value("dranikhollowsb", Zones::DRANIKHOLLOWSB),
+			luabind::value("dranikhollowsc", Zones::DRANIKHOLLOWSC),
+			luabind::value("dranikcatacombsa", Zones::DRANIKCATACOMBSA),
+			luabind::value("dranikcatacombsb", Zones::DRANIKCATACOMBSB),
+			luabind::value("dranikcatacombsc", Zones::DRANIKCATACOMBSC),
+			luabind::value("draniksewersa", Zones::DRANIKSEWERSA),
+			luabind::value("draniksewersb", Zones::DRANIKSEWERSB),
+			luabind::value("draniksewersc", Zones::DRANIKSEWERSC),
+			luabind::value("riftseekers", Zones::RIFTSEEKERS),
+			luabind::value("harbingers", Zones::HARBINGERS),
+			luabind::value("dranik", Zones::DRANIK),
+			luabind::value("broodlands", Zones::BROODLANDS),
+			luabind::value("stillmoona", Zones::STILLMOONA),
+			luabind::value("stillmoonb", Zones::STILLMOONB),
+			luabind::value("thundercrest", Zones::THUNDERCREST),
+			luabind::value("delvea", Zones::DELVEA),
+			luabind::value("delveb", Zones::DELVEB),
+			luabind::value("thenest", Zones::THENEST),
+			luabind::value("guildlobby", Zones::GUILDLOBBY),
+			luabind::value("guildhall", Zones::GUILDHALL),
+			luabind::value("barter", Zones::BARTER),
+			luabind::value("illsalin", Zones::ILLSALIN),
+			luabind::value("illsalina", Zones::ILLSALINA),
+			luabind::value("illsalinb", Zones::ILLSALINB),
+			luabind::value("illsalinc", Zones::ILLSALINC),
+			luabind::value("dreadspire", Zones::DREADSPIRE),
+			luabind::value("drachnidhive", Zones::DRACHNIDHIVE),
+			luabind::value("drachnidhivea", Zones::DRACHNIDHIVEA),
+			luabind::value("drachnidhiveb", Zones::DRACHNIDHIVEB),
+			luabind::value("drachnidhivec", Zones::DRACHNIDHIVEC),
+			luabind::value("westkorlach", Zones::WESTKORLACH),
+			luabind::value("westkorlacha", Zones::WESTKORLACHA),
+			luabind::value("westkorlachb", Zones::WESTKORLACHB),
+			luabind::value("westkorlachc", Zones::WESTKORLACHC),
+			luabind::value("eastkorlach", Zones::EASTKORLACH),
+			luabind::value("eastkorlacha", Zones::EASTKORLACHA),
+			luabind::value("shadowspine", Zones::SHADOWSPINE),
+			luabind::value("corathus", Zones::CORATHUS),
+			luabind::value("corathusa", Zones::CORATHUSA),
+			luabind::value("corathusb", Zones::CORATHUSB),
+			luabind::value("nektulosa", Zones::NEKTULOSA),
+			luabind::value("arcstone", Zones::ARCSTONE),
+			luabind::value("relic", Zones::RELIC),
+			luabind::value("skylance", Zones::SKYLANCE),
+			luabind::value("devastation", Zones::DEVASTATION),
+			luabind::value("devastationa", Zones::DEVASTATIONA),
+			luabind::value("rage", Zones::RAGE),
+			luabind::value("ragea", Zones::RAGEA),
+			luabind::value("takishruins", Zones::TAKISHRUINS),
+			luabind::value("takishruinsa", Zones::TAKISHRUINSA),
+			luabind::value("elddar", Zones::ELDDAR),
+			luabind::value("elddara", Zones::ELDDARA),
+			luabind::value("theater", Zones::THEATER),
+			luabind::value("theatera", Zones::THEATERA),
+			luabind::value("freeporteast", Zones::FREEPORTEAST),
+			luabind::value("freeportwest", Zones::FREEPORTWEST),
+			luabind::value("freeportsewers", Zones::FREEPORTSEWERS),
+			luabind::value("freeportacademy", Zones::FREEPORTACADEMY),
+			luabind::value("freeporttemple", Zones::FREEPORTTEMPLE),
+			luabind::value("freeportmilitia", Zones::FREEPORTMILITIA),
+			luabind::value("freeportarena", Zones::FREEPORTARENA),
+			luabind::value("freeportcityhall", Zones::FREEPORTCITYHALL),
+			luabind::value("freeporttheater", Zones::FREEPORTTHEATER),
+			luabind::value("freeporthall", Zones::FREEPORTHALL),
+			luabind::value("northro", Zones::NORTHRO),
+			luabind::value("southro", Zones::SOUTHRO),
+			luabind::value("crescent", Zones::CRESCENT),
+			luabind::value("moors", Zones::MOORS),
+			luabind::value("stonehive", Zones::STONEHIVE),
+			luabind::value("mesa", Zones::MESA),
+			luabind::value("roost", Zones::ROOST),
+			luabind::value("steppes", Zones::STEPPES),
+			luabind::value("icefall", Zones::ICEFALL),
+			luabind::value("valdeholm", Zones::VALDEHOLM),
+			luabind::value("frostcrypt", Zones::FROSTCRYPT),
+			luabind::value("sunderock", Zones::SUNDEROCK),
+			luabind::value("vergalid", Zones::VERGALID),
+			luabind::value("direwind", Zones::DIREWIND),
+			luabind::value("ashengate", Zones::ASHENGATE),
+			luabind::value("highpasshold", Zones::HIGHPASSHOLD),
+			luabind::value("commonlands", Zones::COMMONLANDS),
+			luabind::value("oceanoftears", Zones::OCEANOFTEARS),
+			luabind::value("kithforest", Zones::KITHFOREST),
+			luabind::value("befallenb", Zones::BEFALLENB),
+			luabind::value("highpasskeep", Zones::HIGHPASSKEEP),
+			luabind::value("innothuleb", Zones::INNOTHULEB),
+			luabind::value("toxxulia", Zones::TOXXULIA),
+			luabind::value("mistythicket", Zones::MISTYTHICKET),
+			luabind::value("kattacastrum", Zones::KATTACASTRUM),
+			luabind::value("thalassius", Zones::THALASSIUS),
+			luabind::value("atiiki", Zones::ATIIKI),
+			luabind::value("zhisza", Zones::ZHISZA),
+			luabind::value("silyssar", Zones::SILYSSAR),
+			luabind::value("solteris", Zones::SOLTERIS),
+			luabind::value("barren", Zones::BARREN),
+			luabind::value("buriedsea", Zones::BURIEDSEA),
+			luabind::value("jardelshook", Zones::JARDELSHOOK),
+			luabind::value("monkeyrock", Zones::MONKEYROCK),
+			luabind::value("suncrest", Zones::SUNCREST),
+			luabind::value("deadbone", Zones::DEADBONE),
+			luabind::value("blacksail", Zones::BLACKSAIL),
+			luabind::value("maidensgrave", Zones::MAIDENSGRAVE),
+			luabind::value("redfeather", Zones::REDFEATHER),
+			luabind::value("shipmvp", Zones::SHIPMVP),
+			luabind::value("shipmvu", Zones::SHIPMVU),
+			luabind::value("shippvu", Zones::SHIPPVU),
+			luabind::value("shipuvu", Zones::SHIPUVU),
+			luabind::value("shipmvm", Zones::SHIPMVM),
+			luabind::value("mechanotus", Zones::MECHANOTUS),
+			luabind::value("mansion", Zones::MANSION),
+			luabind::value("steamfactory", Zones::STEAMFACTORY),
+			luabind::value("shipworkshop", Zones::SHIPWORKSHOP),
+			luabind::value("gyrospireb", Zones::GYROSPIREB),
+			luabind::value("gyrospirez", Zones::GYROSPIREZ),
+			luabind::value("dragonscale", Zones::DRAGONSCALE),
+			luabind::value("lopingplains", Zones::LOPINGPLAINS),
+			luabind::value("hillsofshade", Zones::HILLSOFSHADE),
+			luabind::value("bloodmoon", Zones::BLOODMOON),
+			luabind::value("crystallos", Zones::CRYSTALLOS),
+			luabind::value("guardian", Zones::GUARDIAN),
+			luabind::value("steamfontmts", Zones::STEAMFONTMTS),
+			luabind::value("cryptofshade", Zones::CRYPTOFSHADE),
+			luabind::value("dragonscaleb", Zones::DRAGONSCALEB),
+			luabind::value("oldfieldofbone", Zones::OLDFIELDOFBONE),
+			luabind::value("oldkaesoraa", Zones::OLDKAESORAA),
+			luabind::value("oldkaesorab", Zones::OLDKAESORAB),
+			luabind::value("oldkurn", Zones::OLDKURN),
+			luabind::value("oldkithicor", Zones::OLDKITHICOR),
+			luabind::value("oldcommons", Zones::OLDCOMMONS),
+			luabind::value("oldhighpass", Zones::OLDHIGHPASS),
+			luabind::value("thevoida", Zones::THEVOIDA),
+			luabind::value("thevoidb", Zones::THEVOIDB),
+			luabind::value("thevoidc", Zones::THEVOIDC),
+			luabind::value("thevoidd", Zones::THEVOIDD),
+			luabind::value("thevoide", Zones::THEVOIDE),
+			luabind::value("thevoidf", Zones::THEVOIDF),
+			luabind::value("thevoidg", Zones::THEVOIDG),
+			luabind::value("oceangreenhills", Zones::OCEANGREENHILLS),
+			luabind::value("oceangreenvillage", Zones::OCEANGREENVILLAGE),
+			luabind::value("oldblackburrow", Zones::OLDBLACKBURROW),
+			luabind::value("bertoxtemple", Zones::BERTOXTEMPLE),
+			luabind::value("discord", Zones::DISCORD),
+			luabind::value("discordtower", Zones::DISCORDTOWER),
+			luabind::value("oldbloodfield", Zones::OLDBLOODFIELD),
+			luabind::value("precipiceofwar", Zones::PRECIPICEOFWAR),
+			luabind::value("olddranik", Zones::OLDDRANIK),
+			luabind::value("toskirakk", Zones::TOSKIRAKK),
+			luabind::value("korascian", Zones::KORASCIAN),
+			luabind::value("rathechamber", Zones::RATHECHAMBER),
+			luabind::value("brellsrest", Zones::BRELLSREST),
+			luabind::value("fungalforest", Zones::FUNGALFOREST),
+			luabind::value("underquarry", Zones::UNDERQUARRY),
+			luabind::value("coolingchamber", Zones::COOLINGCHAMBER),
+			luabind::value("shiningcity", Zones::SHININGCITY),
+			luabind::value("arthicrex", Zones::ARTHICREX),
+			luabind::value("foundation", Zones::FOUNDATION),
+			luabind::value("lichencreep", Zones::LICHENCREEP),
+			luabind::value("pellucid", Zones::PELLUCID),
+			luabind::value("stonesnake", Zones::STONESNAKE),
+			luabind::value("brellstemple", Zones::BRELLSTEMPLE),
+			luabind::value("convorteum", Zones::CONVORTEUM),
+			luabind::value("brellsarena", Zones::BRELLSARENA),
+			luabind::value("weddingchapel", Zones::WEDDINGCHAPEL),
+			luabind::value("weddingchapeldark", Zones::WEDDINGCHAPELDARK),
+			luabind::value("dragoncrypt", Zones::DRAGONCRYPT),
+			luabind::value("feerrott2", Zones::FEERROTT2),
+			luabind::value("thulehouse1", Zones::THULEHOUSE1),
+			luabind::value("thulehouse2", Zones::THULEHOUSE2),
+			luabind::value("housegarden", Zones::HOUSEGARDEN),
+			luabind::value("thulelibrary", Zones::THULELIBRARY),
+			luabind::value("well", Zones::WELL),
+			luabind::value("fallen", Zones::FALLEN),
+			luabind::value("morellcastle", Zones::MORELLCASTLE),
+			luabind::value("somnium", Zones::SOMNIUM),
+			luabind::value("alkabormare", Zones::ALKABORMARE),
+			luabind::value("miragulmare", Zones::MIRAGULMARE),
+			luabind::value("thuledream", Zones::THULEDREAM),
+			luabind::value("neighborhood", Zones::NEIGHBORHOOD),
+			luabind::value("argath", Zones::ARGATH),
+			luabind::value("arelis", Zones::ARELIS),
+			luabind::value("sarithcity", Zones::SARITHCITY),
+			luabind::value("rubak", Zones::RUBAK),
+			luabind::value("beastdomain", Zones::BEASTDOMAIN),
+			luabind::value("resplendent", Zones::RESPLENDENT),
+			luabind::value("pillarsalra", Zones::PILLARSALRA),
+			luabind::value("windsong", Zones::WINDSONG),
+			luabind::value("cityofbronze", Zones::CITYOFBRONZE),
+			luabind::value("sepulcher", Zones::SEPULCHER),
+			luabind::value("eastsepulcher", Zones::EASTSEPULCHER),
+			luabind::value("westsepulcher", Zones::WESTSEPULCHER),
+			luabind::value("shardslanding", Zones::SHARDSLANDING),
+			luabind::value("xorbb", Zones::XORBB),
+			luabind::value("kaelshard", Zones::KAELSHARD),
+			luabind::value("eastwastesshard", Zones::EASTWASTESSHARD),
+			luabind::value("crystalshard", Zones::CRYSTALSHARD),
+			luabind::value("breedinggrounds", Zones::BREEDINGGROUNDS),
+			luabind::value("eviltree", Zones::EVILTREE),
+			luabind::value("grelleth", Zones::GRELLETH),
+			luabind::value("chapterhouse", Zones::CHAPTERHOUSE),
+			luabind::value("arttest", Zones::ARTTEST),
+			luabind::value("fhalls", Zones::FHALLS),
+			luabind::value("apprentice", Zones::APPRENTICE)
+	)];
+}
+
+luabind::scope lua_register_languages() {
+	return luabind::class_<LanguageIDs>("Language")
+		.enum_("constants")
+		[(
+			luabind::value("CommonTongue", Language::CommonTongue),
+			luabind::value("Barbarian", Language::Barbarian),
+			luabind::value("Erudian", Language::Erudian),
+			luabind::value("Elvish", Language::Elvish),
+			luabind::value("DarkElvish", Language::DarkElvish),
+			luabind::value("Dwarvish", Language::Dwarvish),
+			luabind::value("Troll", Language::Troll),
+			luabind::value("Ogre", Language::Ogre),
+			luabind::value("Gnomish", Language::Gnomish),
+			luabind::value("Halfling", Language::Halfling),
+			luabind::value("ThievesCant", Language::ThievesCant),
+			luabind::value("OldErudian", Language::OldErudian),
+			luabind::value("ElderElvish", Language::ElderElvish),
+			luabind::value("Froglok", Language::Froglok),
+			luabind::value("Goblin", Language::Goblin),
+			luabind::value("Gnoll", Language::Gnoll),
+			luabind::value("CombineTongue", Language::CombineTongue),
+			luabind::value("ElderTeirDal", Language::ElderTeirDal),
+			luabind::value("Lizardman", Language::Lizardman),
+			luabind::value("Orcish", Language::Orcish),
+			luabind::value("Faerie", Language::Faerie),
+			luabind::value("Dragon", Language::Dragon),
+			luabind::value("ElderDragon", Language::ElderDragon),
+			luabind::value("DarkSpeech", Language::DarkSpeech),
+			luabind::value("VahShir", Language::VahShir),
+			luabind::value("Alaran", Language::Alaran),
+			luabind::value("Hadal", Language::Hadal),
+			luabind::value("Unknown27", Language::Unknown27),
+			luabind::value("MaxValue", Language::MaxValue)
+	)];
+}
+
 luabind::scope lua_register_rules_const() {
 	return luabind::class_<Rule>("Rule")
 		.enum_("constants")
@@ -6755,7 +7958,13 @@ luabind::scope lua_register_rules_const() {
 #define RULE_BOOL(cat, rule, default_value, notes) \
 		luabind::value(#rule, RuleManager::Bool__##rule),
 #include "../common/ruletypes.h"
-		luabind::value("_BoolRuleCount", RuleManager::_BoolRuleCount)
+		luabind::value("_BoolRuleCount", RuleManager::_BoolRuleCount),
+#undef RULE_BOOL
+#define RULE_STRING(cat, rule, default_value, notes) \
+		luabind::value(#rule, RuleManager::String__##rule),
+#include "../common/ruletypes.h"
+		luabind::value("_StringRuleCount", RuleManager::_StringRuleCount)
+#undef RULE_STRING
 	)];
 }
 
@@ -6780,6 +7989,13 @@ luabind::scope lua_register_ruleb() {
 		];
 }
 
+luabind::scope lua_register_rules() {
+	return luabind::namespace_("RuleS")
+		[
+			luabind::def("Get", &get_rules)
+		];
+}
+
 luabind::scope lua_register_journal_speakmode() {
 	return luabind::class_<Journal_SpeakMode>("SpeakMode")
 		.enum_("constants")
@@ -6800,6 +8016,21 @@ luabind::scope lua_register_journal_mode() {
 			luabind::value("None", static_cast<int>(Journal::Mode::None)),
 			luabind::value("Log1", static_cast<int>(Journal::Mode::Log1)),
 			luabind::value("Log2", static_cast<int>(Journal::Mode::Log2))
+		)];
+}
+
+luabind::scope lua_register_exp_source() {
+	return luabind::class_<ExpSource>("ExpSource")
+		.enum_("constants")
+		[(
+			luabind::value("Quest", static_cast<int>(ExpSource::Quest)),
+			luabind::value("GM", static_cast<int>(ExpSource::GM)),
+			luabind::value("Kill", static_cast<int>(ExpSource::Kill)),
+			luabind::value("Death", static_cast<int>(ExpSource::Death)),
+			luabind::value("Resurrection", static_cast<int>(ExpSource::Resurrection)),
+			luabind::value("LDoNChest", static_cast<int>(ExpSource::LDoNChest)),
+			luabind::value("Task", static_cast<int>(ExpSource::Task)),
+			luabind::value("Sacrifice", static_cast<int>(ExpSource::Sacrifice))
 		)];
 }
 

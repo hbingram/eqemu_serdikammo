@@ -15,22 +15,27 @@ void command_reload(Client *c, const Seperator *sep)
 	bool is_rq_alias             = sep->arg[0] && Strings::Contains(command, "#rq");
 	bool is_aa                   = !strcasecmp(sep->arg[1], "aa");
 	bool is_alternate_currencies = !strcasecmp(sep->arg[1], "alternate_currencies");
+	bool is_base_data            = !strcasecmp(sep->arg[1], "base_data");
 	bool is_blocked_spells       = !strcasecmp(sep->arg[1], "blocked_spells");
 	bool is_commands             = !strcasecmp(sep->arg[1], "commands");
 	bool is_content_flags        = !strcasecmp(sep->arg[1], "content_flags");
 	bool is_data_buckets         = !strcasecmp(sep->arg[1], "data_buckets_cache");
 	bool is_doors                = !strcasecmp(sep->arg[1], "doors");
 	bool is_dztemplates          = !strcasecmp(sep->arg[1], "dztemplates");
+	bool is_factions             = !strcasecmp(sep->arg[1], "factions");
 	bool is_ground_spawns        = !strcasecmp(sep->arg[1], "ground_spawns");
 	bool is_level_mods           = !strcasecmp(sep->arg[1], "level_mods");
 	bool is_logs                 = !strcasecmp(sep->arg[1], "logs") || is_logs_reload_alias;
+	bool is_loot                 = !strcasecmp(sep->arg[1], "loot");
 	bool is_merchants            = !strcasecmp(sep->arg[1], "merchants");
 	bool is_npc_emotes           = !strcasecmp(sep->arg[1], "npc_emotes");
+	bool is_npc_spells           = !strcasecmp(sep->arg[1], "npc_spells");
 	bool is_objects              = !strcasecmp(sep->arg[1], "objects");
 	bool is_opcodes              = !strcasecmp(sep->arg[1], "opcodes") || is_opcodes_reload_alias;
 	bool is_perl_export          = !strcasecmp(sep->arg[1], "perl_export");
 	bool is_quest                = !strcasecmp(sep->arg[1], "quest") || (is_rq_alias);
 	bool is_rules                = !strcasecmp(sep->arg[1], "rules");
+	bool is_skill_caps           = !strcasecmp(sep->arg[1], "skill_caps");
 	bool is_static               = !strcasecmp(sep->arg[1], "static");
 	bool is_tasks                = !strcasecmp(sep->arg[1], "tasks");
 	bool is_titles               = !strcasecmp(sep->arg[1], "titles");
@@ -44,22 +49,27 @@ void command_reload(Client *c, const Seperator *sep)
 	if (
 		!is_aa &&
 		!is_alternate_currencies &&
+		!is_base_data &&
 		!is_blocked_spells &&
 		!is_commands &&
 		!is_content_flags &&
 		!is_data_buckets &&
 		!is_doors &&
 		!is_dztemplates &&
+		!is_factions &&
 		!is_ground_spawns &&
 		!is_level_mods &&
 		!is_logs &&
+		!is_loot &&
 		!is_merchants &&
 		!is_npc_emotes &&
+		!is_npc_spells &&
 		!is_objects &&
 		!is_opcodes &&
 		!is_perl_export &&
 		!is_quest &&
 		!is_rules &&
+		!is_skill_caps &&
 		!is_static &&
 		!is_tasks &&
 		!is_titles &&
@@ -82,6 +92,9 @@ void command_reload(Client *c, const Seperator *sep)
 	} else if (is_alternate_currencies) {
 		c->Message(Chat::White, "Attempting to reload Alternate Currencies globally.");
 		pack = new ServerPacket(ServerOP_ReloadAlternateCurrencies, 0);
+	} else if (is_base_data) {
+		c->Message(Chat::White, "Attempting to reload Base Data globally.");
+		pack = new ServerPacket(ServerOP_ReloadBaseData, 0);
 	} else if (is_blocked_spells) {
 		c->Message(Chat::White, "Attempting to reload Blocked Spells globally.");
 		pack = new ServerPacket(ServerOP_ReloadBlockedSpells, 0);
@@ -100,6 +113,9 @@ void command_reload(Client *c, const Seperator *sep)
 	} else if (is_dztemplates) {
 		c->Message(Chat::White, "Attempting to reload Dynamic Zone Templates globally.");
 		pack = new ServerPacket(ServerOP_ReloadDzTemplates, 0);
+	} else if (is_factions) {
+		c->Message(Chat::White, "Attempting to reload Factions globally.");
+		pack = new ServerPacket(ServerOP_ReloadFactions, 0);
 	} else if (is_ground_spawns) {
 		c->Message(Chat::White, "Attempting to reload Ground Spawns globally.");
 		pack = new ServerPacket(ServerOP_ReloadGroundSpawns, 0);
@@ -114,12 +130,18 @@ void command_reload(Client *c, const Seperator *sep)
 	} else if (is_logs) {
 		c->Message(Chat::White, "Attempting to reload Log Settings globally.");
 		pack = new ServerPacket(ServerOP_ReloadLogs, 0);
+	} else if (is_loot) {
+		c->Message(Chat::White, "Attempting to reload Loot globally.");
+		pack = new ServerPacket(ServerOP_ReloadLoot, 0);
 	} else if (is_merchants) {
 		c->Message(Chat::White, "Attempting to reload Merchants globally.");
 		pack = new ServerPacket(ServerOP_ReloadMerchants, 0);
 	} else if (is_npc_emotes) {
 		c->Message(Chat::White, "Attempting to reload NPC Emotes globally.");
 		pack = new ServerPacket(ServerOP_ReloadNPCEmotes, 0);
+	} else if (is_npc_spells) {
+		c->Message(Chat::White, "Attempting to reload NPC Spells globally.");
+		pack = new ServerPacket(ServerOP_ReloadNPCSpells, 0);
 	} else if (is_objects) {
 		c->Message(Chat::White, "Attempting to reload Objects globally.");
 		pack = new ServerPacket(ServerOP_ReloadObjects, 0);
@@ -146,6 +168,9 @@ void command_reload(Client *c, const Seperator *sep)
 	} else if (is_rules) {
 		c->Message(Chat::White, "Attempting to reload Rules globally.");
 		pack = new ServerPacket(ServerOP_ReloadRules, 0);
+	} else if (is_skill_caps) {
+		c->Message(Chat::White, "Attempting to reload Skill Caps globally.");
+		pack = new ServerPacket(ServerOP_ReloadSkillCaps, 0);
 	} else if (is_static) {
 		c->Message(Chat::White, "Attempting to reload Static Zone Data globally.");
 		pack = new ServerPacket(ServerOP_ReloadStaticZoneData, 0);
@@ -230,74 +255,8 @@ void command_reload(Client *c, const Seperator *sep)
 		auto RW = (ReloadWorld_Struct *) pack->pBuffer;
 		RW->global_repop = global_repop;
 	} else if (is_zone) {
-		zone_store.LoadZones(content_db);
-
-		if (arguments < 2) {
-			c->Message(
-				Chat::White,
-				fmt::format(
-					"Zone Header Load {} | Zone: {}",
-					(
-						zone->LoadZoneCFG(zone->GetShortName(), zone->GetInstanceVersion()) ?
-						"Succeeded" :
-						"Failed"
-					),
-					zone->GetZoneDescription()
-				).c_str()
-			);
-			return;
-		}
-
-		auto zone_id = (
-			sep->IsNumber(2) ?
-			Strings::ToUnsignedInt(sep->arg[2]) :
-			ZoneID(sep->arg[2])
-		);
-		if (!zone_id) {
-			c->Message(
-				Chat::White,
-				fmt::format(
-					"Zone ID {} could not be found.",
-					zone_id
-				).c_str()
-			);
-			return;
-		}
-
-		auto zone_short_name = ZoneName(zone_id);
-		auto zone_long_name  = ZoneLongName(zone_id);
-		auto version         = (
-			sep->IsNumber(3) ?
-			Strings::ToUnsignedInt(sep->arg[3]) :
-			0
-		);
-
-		auto outapp = new EQApplicationPacket(OP_NewZone, sizeof(NewZone_Struct));
-		memcpy(outapp->pBuffer, &zone->newzone_data, outapp->size);
-		entity_list.QueueClients(c, outapp);
-		safe_delete(outapp);
-
-		c->Message(
-			Chat::White,
-			fmt::format(
-				"Zone Header Load {} | Zone: {} ({}){}",
-				(
-					zone->LoadZoneCFG(zone_short_name, version) ?
-					"Succeeded" :
-					"Failed"
-				),
-				zone_long_name,
-				zone_short_name,
-				(
-					version ?
-					fmt::format(
-						" Version: {}",
-						version
-					) :
-					""
-				)
-			).c_str()
-		);
+		c->Message(Chat::White, "Attempting to reloading Zone data globally.");
+		pack = new ServerPacket(ServerOP_ReloadZoneData, sizeof(NewZone_Struct));
 	} else if (is_zone_points) {
 		c->Message(Chat::White, "Attempting to reloading Zone Points globally.");
 		pack = new ServerPacket(ServerOP_ReloadZonePoints, 0);
