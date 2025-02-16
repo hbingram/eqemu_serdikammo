@@ -93,7 +93,6 @@ struct ZoneEXPModInfo {
 };
 
 class Client;
-class Expedition;
 class Map;
 class Mob;
 class WaterMap;
@@ -155,9 +154,6 @@ public:
 	bool Process();
 	bool SaveZoneCFG();
 	bool DoesAlternateCurrencyExist(uint32 currency_id);
-
-	int GetNpcPositionUpdateDistance() const;
-	void SetNpcPositionUpdateDistance(int in_npc_position_update_distance);
 
 	char *adv_data;
 
@@ -239,10 +235,11 @@ public:
 	std::vector<GridEntriesRepository::GridEntries> zone_grid_entries;
 
 	std::unordered_map<uint32, std::unique_ptr<DynamicZone>> dynamic_zone_cache;
-	std::unordered_map<uint32, std::unique_ptr<Expedition>>  expedition_cache;
 	std::unordered_map<uint32, DynamicZoneTemplatesRepository::DynamicZoneTemplates> dz_template_cache;
 
 	std::unordered_map<uint32, EXPModifier> exp_modifiers;
+
+	std::vector<uint32> discovered_items;
 
 	time_t weather_timer;
 	Timer  spawn2_timer;
@@ -417,7 +414,7 @@ public:
 		SendDiscordMessage(webhook_id, message_prefix + Discord::FormatDiscordMessage(log_category, message));
 	};
 
-	double GetMaxMovementUpdateRange() const { return max_movement_update_range; }
+	double GetClientUpdateRange() const { return m_client_update_range; }
 
 	void SetIsHotzone(bool is_hotzone);
 
@@ -469,7 +466,7 @@ private:
 	bool      staticzone;
 	bool      zone_has_current_time;
 	bool      quest_hot_reload_queued;
-	double    max_movement_update_range;
+	double    m_client_update_range;
 	char      *long_name;
 	char      *map_name;
 	char      *short_name;
