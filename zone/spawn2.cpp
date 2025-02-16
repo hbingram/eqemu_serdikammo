@@ -498,6 +498,8 @@ bool ZoneDatabase::PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spa
 		);
 	}
 
+	NPC::SpawnZoneController();
+
 	for (auto &s: spawns) {
 		uint32 spawn_time_left = 0;
 		if (spawn_times.count(s.id) != 0) {
@@ -533,11 +535,10 @@ bool ZoneDatabase::PopulateZoneSpawnList(uint32 zoneid, LinkedList<Spawn2*> &spa
 		);
 
 		spawn2_list.Insert(new_spawn);
+		new_spawn->Process();
 	}
 
 	LogInfo("Loaded [{}] spawn2 entries", Strings::Commify(l.size()));
-
-	NPC::SpawnZoneController();
 
 	return true;
 }

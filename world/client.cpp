@@ -541,6 +541,17 @@ bool Client::HandleSendLoginInfoPacket(const EQApplicationPacket *app)
 					skip_char_info = true;
 				}
 			}
+			const auto& custom_files_key = RuleS(World, CustomFilesKey);
+			if (!skip_char_info && !custom_files_key.empty() && cle->Admin() < RuleI(World, CustomFilesAdminLevel)) {
+				// Modified clients can utilize this unused block in login_info to send custom payloads on login
+				// which indicates they are using custom client files with the correct version, based on key payload.
+				const auto client_key = std::string(reinterpret_cast<char*>(login_info->unknown064));
+				if (custom_files_key != client_key) {
+					std::string message = fmt::format("Missing Files [{}]", RuleS(World, CustomFilesUrl) );
+					SendUnsupportedClientPacket(message);
+					skip_char_info = true;
+				}
+			}
 
 			if (!skip_char_info) {
 				SendExpansionInfo();
@@ -2370,21 +2381,26 @@ bool Client::StoreCharacter(
 
 	auto e = InventoryRepository::NewEntity();
 
-	e.charid = character_id;
+	e.character_id = character_id;
 
 	for (int16 slot_id = EQ::invslot::EQUIPMENT_BEGIN; slot_id <= EQ::invbag::BANK_BAGS_END;) {
 		const auto inst = p_inventory_profile->GetItem(slot_id);
 		if (inst) {
-			e.slotid   = slot_id;
-			e.itemid   = inst->GetItem()->ID;
-			e.charges  = inst->GetCharges();
-			e.color    = inst->GetColor();
-			e.augslot1 = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN);
-			e.augslot2 = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 1);
-			e.augslot3 = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 2);
-			e.augslot4 = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 3);
-			e.augslot5 = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 4);
-			e.augslot6 = inst->GetAugmentItemID(EQ::invaug::SOCKET_END);
+			e.slot_id             = slot_id;
+			e.item_id             = inst->GetItem()->ID;
+			e.charges             = inst->GetCharges();
+			e.color               = inst->GetColor();
+			e.augment_one         = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN);
+			e.augment_two         = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 1);
+			e.augment_three       = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 2);
+			e.augment_four        = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 3);
+			e.augment_five        = inst->GetAugmentItemID(EQ::invaug::SOCKET_BEGIN + 4);
+			e.augment_six         = inst->GetAugmentItemID(EQ::invaug::SOCKET_END);
+			e.instnodrop          = inst->IsAttuned() ? 1 : 0;
+			e.ornament_icon       = inst->GetOrnamentationIcon();
+			e.ornament_idfile     = inst->GetOrnamentationIDFile();
+			e.ornament_hero_model = inst->GetOrnamentHeroModel();
+			e.guid                = inst->GetSerialNumber();
 
 			v.emplace_back(e);
 		}

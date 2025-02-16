@@ -40,8 +40,8 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "client.h"
 #include "command.h"
 #include "corpse.h"
+#include "dynamic_zone.h"
 #include "entity.h"
-#include "expedition.h"
 #include "quest_parser_collection.h"
 #include "guild_mgr.h"
 #include "mob.h"
@@ -60,16 +60,18 @@ Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 #include "../common/repositories/guild_tributes_repository.h"
 #include "../common/patches/patches.h"
 #include "../common/skill_caps.h"
+#include "queryserv.h"
 
-extern EntityList entity_list;
-extern Zone* zone;
-extern volatile bool is_zone_loaded;
-extern void Shutdown();
-extern WorldServer worldserver;
-extern PetitionList petition_list;
-extern uint32 numclients;
-extern volatile bool RunLoops;
+extern EntityList             entity_list;
+extern Zone                  *zone;
+extern volatile bool          is_zone_loaded;
+extern void                   Shutdown();
+extern WorldServer            worldserver;
+extern PetitionList           petition_list;
+extern uint32                 numclients;
+extern volatile bool          RunLoops;
 extern QuestParserCollection *parse;
+extern QueryServ             *QServ;
 
 // QuestParserCollection *parse = 0;
 
@@ -91,8 +93,6 @@ void WorldServer::Connect()
 	});
 
 	m_connection->OnMessage(std::bind(&WorldServer::HandleMessage, this, std::placeholders::_1, std::placeholders::_2));
-
-	m_keepalive = std::make_unique<EQ::Timer>(1000, true, std::bind(&WorldServer::OnKeepAlive, this, std::placeholders::_1));
 }
 
 bool WorldServer::SendPacket(ServerPacket *pack)
@@ -3601,20 +3601,10 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 		break;
 	}
-	case ServerOP_ExpeditionCreate:
-	case ServerOP_ExpeditionLockout:
-	case ServerOP_ExpeditionLockoutDuration:
-	case ServerOP_ExpeditionLockState:
-	case ServerOP_ExpeditionReplayOnJoin:
-	case ServerOP_ExpeditionDzAddPlayer:
-	case ServerOP_ExpeditionDzMakeLeader:
-	case ServerOP_ExpeditionCharacterLockout:
-	{
-		Expedition::HandleWorldMessage(pack);
-		break;
-	}
 	case ServerOP_DzCreated:
 	case ServerOP_DzDeleted:
+	case ServerOP_DzAddPlayer:
+	case ServerOP_DzMakeLeader:
 	case ServerOP_DzAddRemoveMember:
 	case ServerOP_DzSwapMembers:
 	case ServerOP_DzRemoveAllMembers:
@@ -3628,6 +3618,11 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 	case ServerOP_DzLeaderChanged:
 	case ServerOP_DzExpireWarning:
 	case ServerOP_DzMovePC:
+	case ServerOP_DzLock:
+	case ServerOP_DzReplayOnJoin:
+	case ServerOP_DzLockout:
+	case ServerOP_DzLockoutDuration:
+	case ServerOP_DzCharacterLockout:
 	{
 		DynamicZone::HandleWorldMessage(pack);
 		break;
@@ -3642,11 +3637,6 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 	case ServerOP_SharedTaskFailed:
 	{
 		SharedTaskZoneMessaging::HandleWorldMessage(pack);
-		break;
-	}
-	case ServerOP_DataBucketCacheUpdate:
-	{
-		DataBucket::HandleWorldMessage(pack);
 		break;
 	}
 	case ServerOP_GuildTributeUpdate: {
@@ -3919,27 +3909,58 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 			auto            in = (TraderMessaging_Struct *) pack->pBuffer;
 			for (auto const &c: entity_list.GetClientList()) {
 				if (c.second->ClientVersion() >= EQ::versions::ClientVersion::RoF2) {
-					auto outapp    = new EQApplicationPacket(OP_BecomeTrader, sizeof(BecomeTrader_Struct));
-					auto out       = (BecomeTrader_Struct *) outapp->pBuffer;
+					auto outapp           = new EQApplicationPacket(OP_BecomeTrader, sizeof(BecomeTrader_Struct));
+					auto out              = (BecomeTrader_Struct *) outapp->pBuffer;
+
+					out->entity_id        = in->entity_id;
+					out->zone_id          = in->zone_id;
+					out->zone_instance_id = in->instance_id;
+					out->trader_id        = in->trader_id;
+					strn0cpy(out->trader_name, in->trader_name, sizeof(out->trader_name));
+
 					switch (in->action) {
 						case TraderOn: {
 							out->action = AddTraderToBazaarWindow;
+							if (c.second->GetTraderCount() <
+								EQ::constants::StaticLookup(c.second->ClientVersion())->BazaarTraderLimit) {
+								if (RuleB(Bazaar, UseAlternateBazaarSearch)) {
+									if (out->zone_id == Zones::BAZAAR &&
+										out->zone_instance_id == c.second->GetInstanceID()) {
+										c.second->IncrementTraderCount();
+										c.second->QueuePacket(outapp, true, Mob::CLIENT_CONNECTED);
+									}
+								}
+								else {
+									c.second->IncrementTraderCount();
+									c.second->QueuePacket(outapp, true, Mob::CLIENT_CONNECTED);
+								}
+							}
 							break;
 						}
 						case TraderOff: {
 							out->action = RemoveTraderFromBazaarWindow;
+							if (c.second->GetTraderCount() <=
+								EQ::constants::StaticLookup(c.second->ClientVersion())->BazaarTraderLimit) {
+								if (RuleB(Bazaar, UseAlternateBazaarSearch)) {
+									if (out->zone_id == Zones::BAZAAR &&
+										out->zone_instance_id == c.second->GetInstanceID()) {
+										c.second->DecrementTraderCount();
+										c.second->QueuePacket(outapp, true, Mob::CLIENT_CONNECTED);
+									}
+								}
+								else {
+									c.second->DecrementTraderCount();
+									c.second->QueuePacket(outapp, true, Mob::CLIENT_CONNECTED);
+								}
+							}
 							break;
 						}
 						default: {
 							out->action = 0;
+							c.second->QueuePacket(outapp, true, Mob::CLIENT_CONNECTED);
 						}
 					}
-					out->entity_id = in->entity_id;
-					out->zone_id   = in->zone_id;
-					out->trader_id = in->trader_id;
-					strn0cpy(out->trader_name, in->trader_name, sizeof(out->trader_name));
 
-					c.second->QueuePacket(outapp);
 					safe_delete(outapp);
 				}
 				if (zone && zone->GetZoneID() == Zones::BAZAAR && in->instance_id == zone->GetInstanceID()) {
@@ -3976,24 +3997,32 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 			TraderRepository::UpdateActiveTransaction(database, in->id, false);
 
-			trader_pc->RemoveItemBySerialNumber(item_sn, in->trader_buy_struct.quantity);
-			trader_pc->AddMoneyToPP(in->trader_buy_struct.price * in->trader_buy_struct.quantity, true);
-			trader_pc->QueuePacket(outapp.get());
+			auto item = trader_pc->FindTraderItemBySerialNumber(item_sn);
 
 			if (player_event_logs.IsEventEnabled(PlayerEvent::TRADER_SELL)) {
 				auto e = PlayerEvent::TraderSellEvent{
-					.item_id              = in->trader_buy_struct.item_id,
+					.item_id              = item ? item->GetID() : 0,
+					.augment_1_id         = item->GetAugmentItemID(0),
+					.augment_2_id         = item->GetAugmentItemID(1),
+					.augment_3_id         = item->GetAugmentItemID(2),
+					.augment_4_id         = item->GetAugmentItemID(3),
+					.augment_5_id         = item->GetAugmentItemID(4),
+					.augment_6_id         = item->GetAugmentItemID(5),
 					.item_name            = in->trader_buy_struct.item_name,
 					.buyer_id             = in->buyer_id,
 					.buyer_name           = in->trader_buy_struct.buyer_name,
 					.price                = in->trader_buy_struct.price,
-					.charges              = in->trader_buy_struct.quantity,
+					.quantity             = in->trader_buy_struct.quantity,
+					.charges              = item ? item->IsStackable() ? 1 : item->GetCharges() : 0,
 					.total_cost           = (in->trader_buy_struct.price * in->trader_buy_struct.quantity),
 					.player_money_balance = trader_pc->GetCarriedMoney(),
 				};
-
 				RecordPlayerEventLogWithClient(trader_pc, PlayerEvent::TRADER_SELL, e);
 			}
+
+			trader_pc->RemoveItemBySerialNumber(item_sn, in->trader_buy_struct.quantity);
+			trader_pc->AddMoneyToPP(in->trader_buy_struct.price * in->trader_buy_struct.quantity, true);
+			trader_pc->QueuePacket(outapp.get());
 
 			break;
 		}
@@ -4089,7 +4118,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 										 sell_line.seller_quantity,
 										 sell_line.item_name,
 										 buyer->GetCleanName());
-								buyer->AddMoneyToPPWithOverflow(total_cost, true);
+								buyer->AddMoneyToPP(total_cost, true);
 								buyer->RemoveItem(sell_line.item_id, sell_line.seller_quantity);
 
 								buyer->Message(
@@ -4188,7 +4217,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 					if (inst->IsStackable()) {
 						if (!buyer->PutItemInInventoryWithStacking(inst.get())) {
 							buyer->Message(Chat::Red, "Error putting item in your inventory.");
-							buyer->AddMoneyToPPWithOverflow(total_cost, true);
+							buyer->AddMoneyToPP(total_cost, true);
 							in->action     = Barter_FailedTransaction;
 							in->sub_action = Barter_FailedBuyerChecks;
 							worldserver.SendPacket(pack);
@@ -4200,7 +4229,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 							inst->SetCharges(1);
 							if (!buyer->PutItemInInventoryWithStacking(inst.get())) {
 								buyer->Message(Chat::Red, "Error putting item in your inventory.");
-								buyer->AddMoneyToPPWithOverflow(total_cost, true);
+								buyer->AddMoneyToPP(total_cost, true);
 								in->action     = Barter_FailedTransaction;
 								in->sub_action = Barter_FailedBuyerChecks;
 								worldserver.SendPacket(pack);
@@ -4209,7 +4238,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 						}
 					}
 
-					if (!buyer->TakeMoneyFromPPWithOverFlow(total_cost, false)) {
+					if (!buyer->TakeMoneyFromPP(total_cost, false)) {
 						in->action     = Barter_FailedTransaction;
 						in->sub_action = Barter_FailedBuyerChecks;
 						worldserver.SendPacket(pack);
@@ -4274,7 +4303,7 @@ void WorldServer::HandleMessage(uint16 opcode, const EQ::Net::Packet &p)
 
 					uint64 total_cost = (uint64) sell_line.item_cost * (uint64) sell_line.seller_quantity;
 					seller->RemoveItem(in->buy_item_id, in->seller_quantity);
-					seller->AddMoneyToPPWithOverflow(total_cost, false);
+					seller->AddMoneyToPP(total_cost, false);
 					seller->SendBarterBuyerClientMessage(
 						sell_line,
 						Barter_SellerTransactionComplete,
@@ -4691,12 +4720,6 @@ void WorldServer::RequestTellQueue(const char *who)
 	SendPacket(pack);
 	safe_delete(pack);
 	return;
-}
-
-void WorldServer::OnKeepAlive(EQ::Timer *t)
-{
-	ServerPacket pack(ServerOP_KeepAlive, 0);
-	SendPacket(&pack);
 }
 
 ZoneEventScheduler *WorldServer::GetScheduler() const

@@ -1167,7 +1167,7 @@ void EntityList::AESpell(
 	) {
 		max_targets_allowed = RuleI(Spells, TargetedAOEMaxTargets);
 	} else if (
-		IsPBAENukeSpell(spell_id) &&
+		IsPBAESpell(spell_id) &&
 		IsDetrimentalSpell &&
 		!is_npc
 	) {
@@ -1199,7 +1199,7 @@ void EntityList::AESpell(
 			continue;
 		}
 
-		if (spells[spell_id].target_type == ST_TargetAENoPlayersPets && current_mob->IsPetOwnerClient()) {
+		if (spells[spell_id].target_type == ST_TargetAENoPlayersPets && current_mob->IsPetOwnerOfClientBot()) {
 			continue;
 		}
 
