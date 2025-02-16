@@ -2009,10 +2009,6 @@ bool Client::SwapItem(MoveItem_Struct* move_in) {
 			}
 			/* BRYANT083123-END- */
 
-			// Add cursor item to trade bucket
-			// Also sends trade information to other client of trade session
-			if(RuleB(QueryServ, PlayerLogMoves)) { QSSwapItemAuditor(move_in); } // QS Audit
-
 			/* BRYANT083123-START-: skip using EQ::invslot::slotCursor */
 			trade->AddEntity(move_in->from_slot, dst_slot_id, move_in->number_in_stack);
 			//trade->AddEntity(dst_slot_id, move_in->number_in_stack);
